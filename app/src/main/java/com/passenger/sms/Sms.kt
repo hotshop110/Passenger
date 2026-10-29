@@ -23,6 +23,8 @@ object Store {
 
     fun refresh(ctx: Context) {
         val app = ctx.applicationContext
+        Flags.init(app)
+        Rules.init(app)
         scope.launch {
             val list = withContext(Dispatchers.IO) {
                 try { Sms.loadConvs(app) } catch (e: Exception) { emptyList() }
@@ -44,6 +46,11 @@ object Sms {
         val hasLetter = a.any { it.isLetter() }
         val d = a.filter { it.isDigit() }
         return if (!hasLetter && d.length >= 9) d.takeLast(9) else a.lowercase()
+    }
+
+    private fun likeArg(address: String): String {
+        val key = keyOf(address)
+        return "%" + (if (key == address.lowercase()) address else key)
     }
 
     private fun read(c: android.database.Cursor) = Msg(
@@ -89,7 +96,7 @@ object Sms {
                 Conv(
                     key = k, address = last.address, name = name, last = last,
                     count = list.size, unread = unread,
-                    cat = Classifier.classify(last.address, last.body, name != null)
+                    cat = Classifier.classify(last.address, last.body, name != null, Flags.overrideFor(k))
                 )
             )
         }
@@ -98,12 +105,9 @@ object Sms {
 
     fun loadThread(ctx: Context, address: String): List<Msg> {
         if (!granted(ctx, Manifest.permission.READ_SMS)) return emptyList()
-        val key = keyOf(address)
-        val sel = "address LIKE ?"
-        val arg = "%" + (if (key == address.lowercase()) address else key)
         val out = ArrayList<Msg>()
         ctx.contentResolver.query(
-            Telephony.Sms.CONTENT_URI, COLS, sel, arrayOf(arg), "date DESC"
+            Telephony.Sms.CONTENT_URI, COLS, "address LIKE ?", arrayOf(likeArg(address)), "date DESC"
         )?.use { c -> while (c.moveToNext()) out.add(read(c)) }
         return out
     }
@@ -111,14 +115,33 @@ object Sms {
     fun markRead(ctx: Context, address: String) {
         if (!isDefault(ctx)) return
         try {
-            val key = keyOf(address)
             val v = ContentValues().apply { put("read", 1) }
             ctx.contentResolver.update(
                 Telephony.Sms.Inbox.CONTENT_URI, v,
-                "address LIKE ? AND read = 0",
-                arrayOf("%" + (if (key == address.lowercase()) address else key))
+                "address LIKE ? AND read = 0", arrayOf(likeArg(address))
             )
         } catch (e: Exception) { }
+    }
+
+    fun deleteMessages(ctx: Context, ids: Collection<Long>): Int {
+        if (ids.isEmpty()) return 0
+        return try {
+            ctx.contentResolver.delete(
+                Telephony.Sms.CONTENT_URI, "_id IN (" + ids.joinToString(",") + ")", null
+            )
+        } catch (e: Exception) { 0 }
+    }
+
+    fun deleteConvs(ctx: Context, addresses: Collection<String>): Int {
+        var n = 0
+        for (a in addresses) {
+            try {
+                n += ctx.contentResolver.delete(
+                    Telephony.Sms.CONTENT_URI, "address LIKE ?", arrayOf(likeArg(a))
+                )
+            } catch (e: Exception) { }
+        }
+        return n
     }
 
     fun send(ctx: Context, to: String, text: String) {

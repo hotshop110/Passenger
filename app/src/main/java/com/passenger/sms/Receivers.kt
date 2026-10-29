@@ -29,7 +29,8 @@ class SmsReceiver : BroadcastReceiver() {
             }
             ctx.contentResolver.insert(Telephony.Sms.Inbox.CONTENT_URI, v)
         } catch (e: Exception) { }
-        Notifier.show(ctx, addr, body)
+        Flags.init(ctx)
+        if (Sms.keyOf(addr) !in Flags.blocked.value) Notifier.show(ctx, addr, body)
         Store.refresh(ctx)
     }
 }

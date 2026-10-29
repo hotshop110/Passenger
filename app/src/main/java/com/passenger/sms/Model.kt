@@ -6,7 +6,9 @@ enum class Cat(val label: String, val emoji: String) {
     BANK("بانکی", "🏦"),
     OTP("کد تأیید", "🔑"),
     PROMO("تبلیغاتی", "📣"),
-    UNKNOWN("ناشناس", "❓")
+    UNKNOWN("ناشناس", "❓"),
+    ARCHIVE("بایگانی", "🗄"),
+    SPAM("اسپم", "🚫")
 }
 
 data class Msg(
@@ -29,13 +31,10 @@ data class Conv(
 )
 
 object Classifier {
-    private val otp = Regex(
-        "(کد\\s*(تایید|تأیید|فعال|ورود|یکبار|یک\\s*بار|امنیتی)|رمز\\s*(یکبار|یک\\s*بار|پویا|دوم|ورود)|verification|OTP|one.?time|\\bcode\\b)",
-        RegexOption.IGNORE_CASE
-    )
-    private val bank = Regex("(مانده|موجودی|واریز|برداشت|تراکنش|بانک|کارت|حساب|انتقال|پرداخت|مبلغ|ریال|پایا|ساتنا)")
-    private val promo = Regex("(لغو\\s*[۱1]\\s*[۱1]|لغو\\s*عضویت|تخفیف|جشنواره|فروش\\s*ویژه|کد\\s*تخفیف|عضویت|اپلیکیشن|دانلود)")
     private val serviceBases = listOf("1000", "2000", "3000", "5000", "9000", "9820", "9830")
+
+    private fun hit(body: String, words: List<String>?): Boolean =
+        words != null && words.any { it.isNotEmpty() && body.contains(it, ignoreCase = true) }
 
     private fun isShortOrServiceNumber(address: String): Boolean {
         if (address.any { it.isLetter() }) return false
@@ -46,11 +45,13 @@ object Classifier {
         return serviceBases.any { n.startsWith(it) } && !address.startsWith("09")
     }
 
-    fun classify(address: String, body: String, isContact: Boolean): Cat {
+    fun classify(address: String, body: String, isContact: Boolean, override: Cat?): Cat {
+        if (override != null) return override
         if (isContact) return Cat.CONTACTS
-        if (otp.containsMatchIn(body)) return Cat.OTP
-        if (bank.containsMatchIn(body)) return Cat.BANK
-        if (promo.containsMatchIn(body) || isShortOrServiceNumber(address)) return Cat.PROMO
+        val r = Rules.map.value
+        if (hit(body, r[Cat.OTP])) return Cat.OTP
+        if (hit(body, r[Cat.BANK])) return Cat.BANK
+        if (hit(body, r[Cat.PROMO]) || isShortOrServiceNumber(address)) return Cat.PROMO
         return Cat.UNKNOWN
     }
 }

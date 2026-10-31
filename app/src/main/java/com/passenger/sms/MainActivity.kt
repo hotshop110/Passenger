@@ -88,7 +88,7 @@ class MainActivity : FragmentActivity() {
     private fun prompt(onOk: () -> Unit) {
         if (prompting) return
         val builder = BiometricPrompt.PromptInfo.Builder()
-            .setTitle("Passenger")
+            .setTitle("PSMS")
             .setSubtitle(T("برای ادامه تأیید هویت کنید", "Authenticate to continue"))
             .setAllowedAuthenticators(lockAuthenticators())
         if (Build.VERSION.SDK_INT < 30) builder.setNegativeButtonText(T("لغو", "Cancel"))

@@ -180,13 +180,13 @@ object Notifier {
         if (pref.mute) return
         val code = if (cat == Cat.OTP && !isPrivate) Classifier.extractCode(body) else null
         val b = NotificationCompat.Builder(ctx, channel(ctx, nm, pref))
-            .setSmallIcon(android.R.drawable.stat_notify_chat)
+            .setSmallIcon(R.drawable.ic_stat_psms)
             .setContentIntent(openIntent(ctx, addr))
             .setAutoCancel(true)
             .setSilent(Cfg.quietNow())
-        if (pref.color != 0) b.setColor(pref.color)
+        b.setColor(if (pref.color != 0) pref.color else 0xFF7CB518.toInt())
         if (isPrivate) {
-            b.setContentTitle("Passenger").setContentText(T("پیام جدید", "New message"))
+            b.setContentTitle("PSMS").setContentText(T("پیام جدید", "New message"))
         } else {
             val title = if (code != null) T("کد: ", "Code: ") + code + "  —  " + name else name
             b.setContentTitle(title).setContentText(body)
@@ -210,11 +210,12 @@ object Notifier {
         val nm = ctx.getSystemService(NotificationManager::class.java)
         val p = NotifPref()
         val b = NotificationCompat.Builder(ctx, channel(ctx, nm, p))
-            .setSmallIcon(android.R.drawable.stat_notify_chat)
+            .setSmallIcon(R.drawable.ic_stat_psms)
             .setContentTitle(T("یادآوری", "Reminder"))
             .setContentText(item.body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(item.body))
             .setAutoCancel(true)
+            .setColor(0xFF7CB518.toInt())
         if (item.address.isNotBlank()) b.setContentIntent(openIntent(ctx, item.address))
         nm.notify(item.id.hashCode(), b.build())
     }

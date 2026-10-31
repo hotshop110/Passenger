@@ -2,16 +2,16 @@ package com.passenger.sms
 
 import androidx.compose.ui.graphics.ImageBitmap
 
-enum class Cat(val fa: String, val en: String, val emoji: String) {
-    ALL("همه", "All", "💬"),
-    CONTACTS("مخاطبین", "Contacts", "👤"),
-    BANK("بانکی", "Bank", "🏦"),
-    OTP("کد تأیید", "Codes", "🔑"),
-    GOV("خدمات دولتی", "Services", "🏛"),
-    PROMO("تبلیغاتی", "Promo", "📣"),
-    UNKNOWN("ناشناس", "Unknown", "❓"),
-    ARCHIVE("بایگانی", "Archive", "🗄"),
-    SPAM("اسپم", "Spam", "🚫");
+enum class Cat(val fa: String, val en: String, val icon: Int) {
+    ALL("همه", "All", R.drawable.ic_chat),
+    CONTACTS("مخاطبین", "Contacts", R.drawable.ic_person),
+    BANK("بانکی", "Bank", R.drawable.ic_bank),
+    OTP("کد تأیید", "Codes", R.drawable.ic_key),
+    GOV("خدمات دولتی", "Services", R.drawable.ic_gov),
+    PROMO("تبلیغاتی", "Promo", R.drawable.ic_promo),
+    UNKNOWN("ناشناس", "Unknown", R.drawable.ic_help),
+    ARCHIVE("بایگانی", "Archive", R.drawable.ic_archive),
+    SPAM("اسپم", "Spam", R.drawable.ic_block);
 
     val label: String get() = T(fa, en)
 }

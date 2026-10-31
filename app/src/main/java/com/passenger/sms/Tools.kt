@@ -147,7 +147,7 @@ fun NotifEditor(t: GlassTheme, id: String, title: String, onDismiss: () -> Unit)
 data class SearchRow(val m: Msg, val name: String?, val cat: Cat)
 
 @Composable
-fun MsgRow(t: GlassTheme, name: String, snippet: String, date: String, onClick: () -> Unit, trailing: String? = null, onTrailing: (() -> Unit)? = null) {
+fun MsgRow(t: GlassTheme, name: String, snippet: String, date: String, onClick: () -> Unit, trailing: Int? = null, onTrailing: (() -> Unit)? = null) {
     Row(
         Modifier.fillMaxWidth().glass(t, 14.dp).clickable { onClick() }.padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -162,7 +162,7 @@ fun MsgRow(t: GlassTheme, name: String, snippet: String, date: String, onClick: 
         }
         if (trailing != null && onTrailing != null) {
             Box(Modifier.size(36.dp).clip(CircleShape).clickable { onTrailing() }, contentAlignment = Alignment.Center) {
-                Text(trailing, fontSize = 16.sp, color = t.text)
+                Ic(trailing, t.text, 20.dp)
             }
         }
     }
@@ -261,7 +261,7 @@ fun StarredPage(t: GlassTheme, onBack: () -> Unit, onOpen: (String) -> Unit) {
             }
             items(msgs, key = { it.id }) { m ->
                 val nm = Sms.contactName(ctx, m.address) ?: Flags.aliases.value[Sms.keyOf(m.address)] ?: m.address
-                MsgRow(t, nm, m.body, Fmt.time(m.date, t, withDate = true), { onOpen(m.address) }, "★") {
+                MsgRow(t, nm, m.body, Fmt.time(m.date, t, withDate = true), { onOpen(m.address) }, R.drawable.ic_star) {
                     Flags.setStarred(listOf(m.id.toString()), false)
                 }
             }
@@ -285,7 +285,7 @@ fun ScheduledPage(t: GlassTheme, onBack: () -> Unit) {
                 val kind = if (it.type == "send") T("ارسال", "Send") else T("یادآوری", "Reminder")
                 MsgRow(
                     t, kind + " · " + it.address, it.body, Fmt.time(it.at, t, withDate = true), {},
-                    "✕"
+                    R.drawable.ic_close
                 ) {
                     Sched.remove(ctx, it.id)
                     sched = Sched.all(ctx).filter { x -> x.type != "retry" }
@@ -323,7 +323,7 @@ fun TrashPage(t: GlassTheme, onBack: () -> Unit) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Chip(t, T("بازیابی", "Restore"), false) {
                             if (!Sms.isDefault(ctx)) {
-                                toast(ctx, T("برای بازیابی باید برنامه پیش‌فرض باشد", "Set Passenger as default SMS app first"))
+                                toast(ctx, T("برای بازیابی باید برنامه پیش‌فرض باشد", "Set PSMS as default SMS app first"))
                             } else {
                                 scope.launch {
                                     withContext(Dispatchers.IO) { Trash.restore(ctx, g) }
@@ -517,7 +517,7 @@ fun TemplatesPage(t: GlassTheme, onBack: () -> Unit) {
                 Row(Modifier.fillMaxWidth().glass(t, 14.dp).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(s, color = t.text, fontSize = 14.sp, modifier = Modifier.weight(1f))
                     Box(Modifier.size(36.dp).clip(CircleShape).clickable { Cfg.setTemplates(list - s) }, contentAlignment = Alignment.Center) {
-                        Text("✕", color = t.text)
+                        Ic(R.drawable.ic_close, t.text, 18.dp)
                     }
                 }
             }
@@ -558,7 +558,11 @@ fun RulesPage(t: GlassTheme, onBack: () -> Unit) {
                 key(gen, c) {
                     var txt by remember { mutableStateOf(Rules.text(c)) }
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(c.emoji + " " + c.label, color = t.text, fontWeight = FontWeight.Bold)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Ic(c.icon, t.accent, 18.dp)
+                            Spacer(Modifier.size(8.dp))
+                            Text(c.label, color = t.text, fontWeight = FontWeight.Bold)
+                        }
                         GlassField(t, txt, { txt = it; Rules.set(c, it) }, T("کلمه‌ها…", "Keywords…"),
                             Modifier.fillMaxWidth(), singleLine = false)
                     }

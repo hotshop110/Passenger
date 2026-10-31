@@ -10,7 +10,7 @@ object Fmt {
     val enMonths = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
     fun digits(s: String, persian: Boolean): String {
-        if (!persian) return s
+        if (!persian || !Lang.isFa) return s
         val sb = StringBuilder()
         for (ch in s) {
             if (ch in '0'..'9') sb.append('۰' + (ch - '0')) else sb.append(ch)

@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
@@ -35,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -74,6 +76,7 @@ fun HomeScreen(
     var query by remember { mutableStateOf("") }
     var tab by remember { mutableStateOf(Cat.ALL) }
     var simFilter by remember { mutableStateOf(-1) }
+    var filtersOpen by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf(setOf<String>()) }
     var askDelete by remember { mutableStateOf(false) }
     var askMove by remember { mutableStateOf(false) }
@@ -97,9 +100,9 @@ fun HomeScreen(
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             if (selected.isEmpty()) {
-                AppBar(t, "Passenger") {
+                AppBar(t, "PSMS") {
                     val fg = if (t.flat) t.barText else t.text
-                    BarBtn(fg, "⚙") { onPage(Page.SETTINGS) }
+                    BarBtn(fg, R.drawable.ic_tune) { onPage(Page.SETTINGS) }
                     MenuBtn(
                         fg,
                         listOf(
@@ -116,12 +119,12 @@ fun HomeScreen(
             } else {
                 val fg = if (t.flat) t.barText else t.text
                 AppBar(t, Fmt.digits(T("${selected.size} انتخاب", "${selected.size} selected"), t.jalali), onBack = { selected = emptySet() }) {
-                    BarBtn(fg, "📌") {
+                    BarBtn(fg, R.drawable.ic_pin) {
                         val allPinned = selected.all { it in pinned }
                         Flags.setPinned(selected, !allPinned)
                         selected = emptySet()
                     }
-                    BarBtn(fg, "🗑") { askDelete = true }
+                    BarBtn(fg, R.drawable.ic_trash) { askDelete = true }
                     MenuBtn(
                         fg,
                         listOf(
@@ -139,7 +142,7 @@ fun HomeScreen(
                                 val addrs = convs.filter { it.key in selected }.map { it.address }
                                 selected = emptySet()
                                 if (!Sms.isDefault(ctx)) {
-                                    toast(ctx, T("برای این کار باید برنامه پیش‌فرض باشد", "Set Passenger as default SMS app first"))
+                                    toast(ctx, T("برای این کار باید برنامه پیش‌فرض باشد", "Set PSMS as default SMS app first"))
                                 } else {
                                     scope.launch {
                                         withContext(Dispatchers.IO) { for (a in addrs) Sms.markRead(ctx, a) }
@@ -159,35 +162,62 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        T("برای دریافت، ذخیره و حذف پیامک‌ها، Passenger را برنامه پیش‌فرض کنید",
-                            "Make Passenger your default SMS app to receive, store and delete messages"),
+                        T("برای دریافت، ذخیره و حذف پیامک‌ها، PSMS را برنامه پیش‌فرض کنید",
+                            "Make PSMS your default SMS app to receive, store and delete messages"),
                         color = t.text, fontSize = 13.sp, modifier = Modifier.weight(1f)
                     )
                     Text(T("تنظیم", "Set"), color = t.accent, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
             }
 
-            GlassField(t, query, { query = it }, T("جستجو در پیام‌ها و مخاطبین…", "Search messages and contacts…"),
-                Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth())
-
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            val filterActive = tab != Cat.ALL || simFilter >= 0
+            Row(
+                Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                items(Cat.values().toList()) { c ->
-                    val n = convs.count { inTab(it, c, archived, blocked, priv) }
-                    Chip(t, c.emoji + " " + Fmt.digits("${c.label} $n", t.jalali), c == tab) { tab = c }
+                GlassField(t, query, { query = it }, T("جستجو در پیام‌ها و مخاطبین…", "Search messages and contacts…"), Modifier.weight(1f))
+                Spacer(Modifier.size(8.dp))
+                Box(
+                    Modifier.size(48.dp).glass(t, 24.dp).clickable { filtersOpen = !filtersOpen },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Ic(
+                        R.drawable.ic_chevron_down, if (filterActive) t.accent else t.text, 22.dp,
+                        Modifier.rotate(if (filtersOpen) 180f else 0f)
+                    )
+                    if (filterActive) {
+                        Box(Modifier.align(Alignment.TopEnd).padding(11.dp).size(8.dp).clip(CircleShape).background(t.accent))
+                    }
                 }
             }
 
-            if (sims.size >= 2) {
+            if (filterActive && !filtersOpen) {
+                Text(
+                    tab.label + (if (simFilter >= 0) "  ·  SIM " + ((sims.firstOrNull { it.subId == simFilter }?.slot ?: 0) + 1) else ""),
+                    color = t.accent, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 2.dp)
+                )
+            }
+
+            if (filtersOpen) {
                 LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    item { Chip(t, T("همه سیم‌ها", "All SIMs"), simFilter < 0) { simFilter = -1 } }
-                    items(sims) { s ->
-                        Chip(t, "SIM ${s.slot + 1}", simFilter == s.subId) { simFilter = s.subId }
+                    items(Cat.values().toList()) { c ->
+                        val n = convs.count { inTab(it, c, archived, blocked, priv) }
+                        Chip(t, Fmt.digits("${c.label} $n", t.jalali), c == tab, c.icon) { tab = c }
+                    }
+                }
+                if (sims.size >= 2) {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        item { Chip(t, T("همه سیم‌ها", "All SIMs"), simFilter < 0, R.drawable.ic_sim) { simFilter = -1 } }
+                        items(sims) { s ->
+                            Chip(t, "SIM ${s.slot + 1}", simFilter == s.subId, R.drawable.ic_sim) { simFilter = s.subId }
+                        }
                     }
                 }
             }
@@ -205,7 +235,7 @@ fun HomeScreen(
                             Modifier.fillMaxWidth().padding(16.dp).glass(t).clickable { onOpen(query) }.padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(T("✎  ارسال پیام به $query", "✎  Message $query"), color = t.text, fontSize = 15.sp)
+                            Text(T("ارسال پیام به $query", "Message $query"), color = t.text, fontSize = 15.sp)
                         }
                     }
                 }
@@ -246,7 +276,7 @@ fun HomeScreen(
             Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(20.dp)
                 .size(56.dp).clip(CircleShape).background(t.accent).clickable { askNew = true },
             contentAlignment = Alignment.Center
-        ) { Text("✎", color = t.onAccent, fontSize = 22.sp) }
+        ) { Ic(R.drawable.ic_edit, t.onAccent, 26.dp) }
     }
 
     if (askNew) {
@@ -285,8 +315,8 @@ fun HomeScreen(
                 TextButton(onClick = {
                     askDelete = false
                     if (!Sms.isDefault(ctx)) {
-                        toast(ctx, T("برای حذف، Passenger باید برنامه پیش‌فرض پیامک باشد",
-                            "Passenger must be the default SMS app to delete"))
+                        toast(ctx, T("برای حذف، PSMS باید برنامه پیش‌فرض پیامک باشد",
+                            "PSMS must be the default SMS app to delete"))
                     } else {
                         val addrs = convs.filter { it.key in selected }.map { it.address }
                         selected = emptySet()
@@ -309,16 +339,21 @@ fun HomeScreen(
                 Column {
                     val options = listOf<Cat?>(Cat.CONTACTS, Cat.BANK, Cat.OTP, Cat.GOV, Cat.PROMO, Cat.UNKNOWN, null)
                     for (c in options) {
-                        Text(
-                            if (c == null) T("↺ تشخیص خودکار", "↺ Automatic") else c.emoji + " " + c.label,
-                            fontSize = 16.sp,
-                            modifier = Modifier.fillMaxWidth().clickable {
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
                                 Flags.setOverride(selected, c)
                                 selected = emptySet()
                                 askMove = false
                                 Store.refresh(ctx)
-                            }.padding(vertical = 12.dp)
-                        )
+                            }.padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (c != null) {
+                                Ic(c.icon, LocalContentColor.current, 20.dp)
+                                Spacer(Modifier.size(10.dp))
+                            }
+                            Text(if (c == null) T("تشخیص خودکار", "Automatic") else c.label, fontSize = 16.sp)
+                        }
                     }
                 }
             },
@@ -351,7 +386,7 @@ fun SwipeRow(
             Box(
                 Modifier.fillMaxSize().background(t.accent.copy(alpha = 0.35f)).padding(horizontal = 24.dp),
                 contentAlignment = if (toStart) Alignment.CenterStart else Alignment.CenterEnd
-            ) { Text(if (toStart) "📌" else "🗄", fontSize = 22.sp) }
+            ) { Ic(if (toStart) R.drawable.ic_pin else R.drawable.ic_archive, t.text, 24.dp) }
         }
     ) { content() }
 }
@@ -399,7 +434,10 @@ fun ConvRow(
             Spacer(Modifier.size(8.dp))
             Column(horizontalAlignment = Alignment.End) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (pinned) Text("📌", fontSize = 11.sp)
+                    if (pinned) {
+                        Ic(R.drawable.ic_pin, t.subText, 12.dp)
+                        Spacer(Modifier.size(3.dp))
+                    }
                     Text(Fmt.time(c.last.date, t), color = t.subText, fontSize = 11.sp)
                 }
                 if (sim != null) Text(sim, color = t.subText, fontSize = 10.sp)

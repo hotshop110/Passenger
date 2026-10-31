@@ -108,7 +108,7 @@ fun SettingsScreen(
         if (uri != null) {
             scope.launch {
                 if (!Sms.isDefault(ctx)) {
-                    toast(ctx, T("برای بازیابی، Passenger باید برنامه پیش‌فرض پیامک باشد", "Passenger must be the default SMS app to restore"))
+                    toast(ctx, T("برای بازیابی، PSMS باید برنامه پیش‌فرض پیامک باشد", "PSMS must be the default SMS app to restore"))
                 } else {
                     val r = withContext(Dispatchers.IO) {
                         try { Backup.import(ctx, uri) } catch (e: Exception) { null }
@@ -126,14 +126,14 @@ fun SettingsScreen(
             Modifier.fillMaxSize().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Section(t, T("زبان", "Language")) {
+            Section(t, T("زبان", "Language"), R.drawable.ic_chat) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Chip(t, "فارسی", Lang.code.value == "fa") { Cfg.setLang("fa") }
                     Chip(t, "English", Lang.code.value == "en") { Cfg.setLang("en") }
                 }
             }
 
-            Section(t, T("تم", "Theme")) {
+            Section(t, T("تم", "Theme"), R.drawable.ic_tune) {
                 val idxs = (0..Palettes.flats.size).toList()
                 for (pair in idxs.chunked(2)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -146,7 +146,7 @@ fun SettingsScreen(
                 SwitchRow(t, T("تیره و روشن خودکار (طبق گوشی)", "Auto dark / light (follow phone)"), raw.auto) { onChange(raw.copy(auto = it)) }
             }
 
-            Section(t, T("رنگ اصلی", "Accent color")) {
+            Section(t, T("رنگ اصلی", "Accent color"), R.drawable.ic_star) {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Box(
                         Modifier.size(40.dp).clip(CircleShape).background(Color.Gray.copy(alpha = 0.3f))
@@ -174,7 +174,7 @@ fun SettingsScreen(
             }
 
             if (raw.style == 0) {
-                Section(t, T("پس‌زمینه شیشه‌ای", "Glass background")) {
+                Section(t, T("پس‌زمینه شیشه‌ای", "Glass background"), R.drawable.ic_tune) {
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Palettes.backgrounds.forEachIndexed { i, p ->
                             Box(
@@ -188,7 +188,7 @@ fun SettingsScreen(
                                 .border(if (raw.customBg) 3.dp else 1.dp, if (raw.customBg) t.accent else Color.White.copy(alpha = 0.4f), CircleShape)
                                 .clickable { onChange(raw.copy(bgIndex = nBg)) },
                             contentAlignment = Alignment.Center
-                        ) { Text("✎", color = Color.White, fontSize = 18.sp) }
+                        ) { Ic(R.drawable.ic_edit, Color.White, 20.dp) }
                     }
                     if (raw.customBg) {
                         LabeledSlider(t, T("رنگ اول", "Color 1"), raw.hue1, 0f..360f) { onChange(raw.copy(hue1 = it)) }
@@ -201,13 +201,13 @@ fun SettingsScreen(
                 }
             }
 
-            Section(t, T("ظاهر لیست و پیام‌ها", "List & bubbles")) {
+            Section(t, T("ظاهر لیست و پیام‌ها", "List & bubbles"), R.drawable.ic_chat) {
                 SwitchRow(t, T("لیست فشرده", "Compact list"), raw.dense) { onChange(raw.copy(dense = it)) }
                 LabeledSlider(t, T("گردی حباب پیام", "Bubble roundness"), raw.bubble, 4f..28f) { onChange(raw.copy(bubble = it)) }
                 LabeledSlider(t, T("اندازه متن پیام‌ها", "Message text size"), raw.msgScale, 0.8f..1.6f) { onChange(raw.copy(msgScale = it)) }
             }
 
-            Section(t, T("متن و تاریخ", "Text & date")) {
+            Section(t, T("متن و تاریخ", "Text & date"), R.drawable.ic_edit) {
                 LabeledSlider(t, T("اندازه متن برنامه", "App text size"), raw.textScale, 0.8f..1.6f) { onChange(raw.copy(textScale = it)) }
                 Text(T("فونت", "Font"), color = t.subText, fontSize = 13.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -216,10 +216,10 @@ fun SettingsScreen(
                 SwitchRow(t, T("تاریخ شمسی و ارقام فارسی", "Jalali dates & Persian digits"), raw.jalali) { onChange(raw.copy(jalali = it)) }
             }
 
-            Section(t, T("اعلان‌ها", "Notifications")) {
+            Section(t, T("اعلان‌ها", "Notifications"), R.drawable.ic_bolt) {
                 Text(T("صدا، لرزش و رنگ هر دسته", "Sound, vibration and color per category"), color = t.subText, fontSize = 13.sp)
                 for (c in listOf(Cat.CONTACTS, Cat.BANK, Cat.OTP, Cat.GOV, Cat.PROMO, Cat.UNKNOWN)) {
-                    ActionBtn(t, c.emoji + " " + c.label) { notifFor = c }
+                    ActionBtn(t, c.label, c.icon) { notifFor = c }
                 }
                 SwitchRow(t, T("ساعت سکوت", "Quiet hours"), quietOn) { Cfg.setQuietOn(it) }
                 if (quietOn) {
@@ -228,7 +228,7 @@ fun SettingsScreen(
                 }
             }
 
-            Section(t, T("ارسال", "Sending")) {
+            Section(t, T("ارسال", "Sending"), R.drawable.ic_send) {
                 Text(T("تأخیر قبل از ارسال (امکان لغو)", "Delay before sending (undo)"), color = t.subText, fontSize = 13.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     for (s in listOf(0, 5, 10)) {
@@ -242,7 +242,7 @@ fun SettingsScreen(
                 ActionBtn(t, T("پیام‌های آماده", "Templates")) { onPage(Page.TEMPLATES) }
             }
 
-            Section(t, T("پاک‌سازی خودکار", "Auto cleanup")) {
+            Section(t, T("پاک‌سازی خودکار", "Auto cleanup"), R.drawable.ic_trash) {
                 Text(T("حذف کدهای تأیید قدیمی‌تر از…", "Delete verification codes older than…"), color = t.subText, fontSize = 13.sp)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     for (d in listOf(0, 1, 3, 7, 30)) {
@@ -251,7 +251,7 @@ fun SettingsScreen(
                 }
             }
 
-            Section(t, T("امنیت", "Security")) {
+            Section(t, T("امنیت", "Security"), R.drawable.ic_lock) {
                 SwitchRow(t, T("قفل برنامه (اثر انگشت یا قفل گوشی)", "App lock (fingerprint or phone lock)"), lockOn) { on ->
                     if (on) {
                         val ok = BiometricManager.from(ctx).canAuthenticate(lockAuthenticators()) == BiometricManager.BIOMETRIC_SUCCESS
@@ -263,12 +263,12 @@ fun SettingsScreen(
                 }
             }
 
-            Section(t, T("دسته‌بندی", "Categories")) {
+            Section(t, T("دسته‌بندی", "Categories"), R.drawable.ic_label) {
                 ActionBtn(t, T("ویرایش کلمات دسته‌بندی", "Edit category keywords")) { onPage(Page.RULES) }
             }
 
-            Section(t, T("پشتیبان‌گیری", "Backup")) {
-                ActionBtn(t, T("ذخیره‌ی همه‌ی پیام‌ها در فایل", "Save all messages to a file")) { exportL.launch("passenger-backup.json") }
+            Section(t, T("پشتیبان‌گیری", "Backup"), R.drawable.ic_archive) {
+                ActionBtn(t, T("ذخیره‌ی همه‌ی پیام‌ها در فایل", "Save all messages to a file")) { exportL.launch("psms-backup.json") }
                 ActionBtn(t, T("بازیابی پیام‌ها از فایل", "Restore messages from a file")) { importL.launch(arrayOf("application/json", "*/*")) }
             }
 
@@ -281,6 +281,6 @@ fun SettingsScreen(
 
     val nf = notifFor
     if (nf != null) {
-        NotifEditor(t, "c:${nf.name}", nf.emoji + " " + nf.label) { notifFor = null }
+        NotifEditor(t, "c:${nf.name}", nf.label) { notifFor = null }
     }
 }

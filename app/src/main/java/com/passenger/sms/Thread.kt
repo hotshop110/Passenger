@@ -241,7 +241,7 @@ fun ThreadScreen(t: GlassTheme, address: String, onBack: () -> Unit) {
             }
         } else {
             AppBar(t, Fmt.digits(T("${multi.size} پیام", "${multi.size} selected"), t.jalali), onBack = { multi = emptySet() }) {
-                BarBtn(fg, "🗑") { askDelMsgs = multi.toList() }
+                BarBtn(fg, R.drawable.ic_trash) { askDelMsgs = multi.toList() }
             }
         }
 
@@ -298,11 +298,16 @@ fun ThreadScreen(t: GlassTheme, address: String, onBack: () -> Unit) {
                                 m.status == 0 -> " ✓✓"
                                 else -> " ✓"
                             }
-                            val star = if (m.id.toString() in starred) "★ " else ""
-                            Text(
-                                star + Fmt.time(m.date, t, withDate = true) + (if (slot != null) "  $slot" else "") + status,
-                                color = if (m.type == 5) Color(0xFFE53935) else subc, fontSize = 10.sp
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (m.id.toString() in starred) {
+                                    Ic(R.drawable.ic_star, subc, 11.dp)
+                                    Spacer(Modifier.size(3.dp))
+                                }
+                                Text(
+                                    Fmt.time(m.date, t, withDate = true) + (if (slot != null) "  $slot" else "") + status,
+                                    color = if (m.type == 5) Color(0xFFE53935) else subc, fontSize = 10.sp
+                                )
+                            }
                         }
                     }
                 }
@@ -365,7 +370,7 @@ fun ThreadScreen(t: GlassTheme, address: String, onBack: () -> Unit) {
                 }
             }
             Box(Modifier.size(40.dp).clip(CircleShape).clickable { askTemplates = true }, contentAlignment = Alignment.Center) {
-                Text("⚡", fontSize = 18.sp)
+                Ic(R.drawable.ic_bolt, tx, 22.dp)
             }
             Box(
                 Modifier.size(40.dp).clip(CircleShape).clickable {
@@ -378,11 +383,11 @@ fun ThreadScreen(t: GlassTheme, address: String, onBack: () -> Unit) {
                     }
                 },
                 contentAlignment = Alignment.Center
-            ) { Text("⏰", fontSize = 18.sp) }
+            ) { Ic(R.drawable.ic_clock, tx, 22.dp) }
             Box(
                 Modifier.size(48.dp).clip(CircleShape).background(t.accent).clickable { submit() },
                 contentAlignment = Alignment.Center
-            ) { Text("➤", color = t.onAccent, fontSize = 20.sp) }
+            ) { Ic(R.drawable.ic_send, t.onAccent, 22.dp) }
         }
     }
 
@@ -469,7 +474,7 @@ fun ThreadScreen(t: GlassTheme, address: String, onBack: () -> Unit) {
                 TextButton(onClick = {
                     askDelMsgs = null
                     if (!Sms.isDefault(ctx)) {
-                        toast(ctx, T("برای حذف، Passenger باید برنامه پیش‌فرض پیامک باشد", "Passenger must be the default SMS app to delete"))
+                        toast(ctx, T("برای حذف، PSMS باید برنامه پیش‌فرض پیامک باشد", "PSMS must be the default SMS app to delete"))
                     } else {
                         multi = emptySet()
                         scope.launch {
@@ -492,7 +497,7 @@ fun ThreadScreen(t: GlassTheme, address: String, onBack: () -> Unit) {
                 TextButton(onClick = {
                     askDelConv = false
                     if (!Sms.isDefault(ctx)) {
-                        toast(ctx, T("برای حذف، Passenger باید برنامه پیش‌فرض پیامک باشد", "Passenger must be the default SMS app to delete"))
+                        toast(ctx, T("برای حذف، PSMS باید برنامه پیش‌فرض پیامک باشد", "PSMS must be the default SMS app to delete"))
                     } else {
                         scope.launch {
                             withContext(Dispatchers.IO) { Sms.deleteConvs(app, listOf(address)) }

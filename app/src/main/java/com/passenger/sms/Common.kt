@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.Icon
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -38,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,18 +65,23 @@ fun GlassField(
 }
 
 @Composable
-fun BarBtn(fg: Color, label: String, onClick: () -> Unit) {
+fun Ic(res: Int, tint: Color, size: Dp = 22.dp, modifier: Modifier = Modifier) {
+    Icon(painter = painterResource(res), contentDescription = null, modifier = modifier.size(size), tint = tint)
+}
+
+@Composable
+fun BarBtn(fg: Color, res: Int, onClick: () -> Unit) {
     Box(
         Modifier.size(44.dp).clip(CircleShape).clickable { onClick() },
         contentAlignment = Alignment.Center
-    ) { Text(label, color = fg, fontSize = 20.sp) }
+    ) { Ic(res, fg, 24.dp) }
 }
 
 @Composable
 fun MenuBtn(fg: Color, items: List<Pair<String, () -> Unit>>) {
     var open by remember { mutableStateOf(false) }
     Box {
-        BarBtn(fg, "⋮") { open = true }
+        BarBtn(fg, R.drawable.ic_more) { open = true }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             for ((label, act) in items) {
                 DropdownMenuItem(text = { Text(label) }, onClick = { open = false; act() })
@@ -95,7 +102,7 @@ fun AppBar(
             .padding(horizontal = 8.dp, vertical = 4.dp).heightIn(min = 52.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (onBack != null) BarBtn(fg, if (Lang.isFa) "→" else "←", onBack)
+        if (onBack != null) BarBtn(fg, R.drawable.ic_back, onBack)
         Text(
             title, color = fg, fontSize = 20.sp, fontWeight = FontWeight.Bold,
             maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -114,12 +121,18 @@ fun IconBtn(t: GlassTheme, label: String, onClick: () -> Unit) {
 }
 
 @Composable
-fun Section(t: GlassTheme, title: String, content: @Composable ColumnScope.() -> Unit) {
+fun Section(t: GlassTheme, title: String, icon: Int? = null, content: @Composable ColumnScope.() -> Unit) {
     Column(
         Modifier.fillMaxWidth().glass(t).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text(title, color = t.text, fontWeight = FontWeight.Bold)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (icon != null) {
+                Ic(icon, t.accent, 20.dp)
+                Spacer(Modifier.size(8.dp))
+            }
+            Text(title, color = t.text, fontWeight = FontWeight.Bold)
+        }
         content()
     }
 }
@@ -154,24 +167,37 @@ fun SwitchRow(t: GlassTheme, label: String, checked: Boolean, onChecked: (Boolea
 }
 
 @Composable
-fun ActionBtn(t: GlassTheme, label: String, onClick: () -> Unit) {
-    Box(
+fun ActionBtn(t: GlassTheme, label: String, icon: Int? = null, onClick: () -> Unit) {
+    Row(
         Modifier.fillMaxWidth().glass(t, 18.dp).clickable { onClick() }.padding(14.dp),
-        contentAlignment = Alignment.Center
-    ) { Text(label, color = t.accent, fontWeight = FontWeight.Bold, fontSize = 14.sp) }
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (icon != null) {
+            Ic(icon, t.accent, 18.dp)
+            Spacer(Modifier.size(8.dp))
+        }
+        Text(label, color = t.accent, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+    }
 }
 
 @Composable
-fun Chip(t: GlassTheme, label: String, selected: Boolean, onClick: () -> Unit) {
-    Box(
+fun Chip(t: GlassTheme, label: String, selected: Boolean, icon: Int? = null, onClick: () -> Unit) {
+    val fgc = if (selected && t.flat) t.onAccent else t.text
+    Row(
         Modifier.glass(t, 18.dp)
             .background(if (selected) t.accent.copy(alpha = if (t.flat) 1f else 0.55f) else Color.Transparent)
             .clickable { onClick() }
-            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
+        if (icon != null) {
+            Ic(icon, fgc, 16.dp)
+            Spacer(Modifier.size(6.dp))
+        }
         Text(
             label,
-            color = if (selected && t.flat) t.onAccent else t.text,
+            color = fgc,
             fontSize = 13.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
         )
@@ -197,7 +223,7 @@ fun Avatar(t: GlassTheme, c: Conv, size: Dp, selected: Boolean) {
         val title = c.name ?: c.address
         val photo = c.photo
         if (selected) {
-            Text("✓", color = fg, fontSize = (size.value * 0.45f).sp, fontWeight = FontWeight.Bold)
+            Ic(R.drawable.ic_check_all, fg, (size.value * 0.5f).dp)
         } else if (photo != null) {
             Image(
                 bitmap = photo, contentDescription = null,
@@ -206,7 +232,7 @@ fun Avatar(t: GlassTheme, c: Conv, size: Dp, selected: Boolean) {
         } else if (title.any { it.isLetter() }) {
             Text(initialsOf(title), color = fg, fontSize = (size.value * 0.36f).sp, fontWeight = FontWeight.Bold)
         } else {
-            Text(c.cat.emoji, fontSize = (size.value * 0.42f).sp)
+            Ic(c.cat.icon, fg, (size.value * 0.5f).dp)
         }
     }
 }
@@ -223,9 +249,9 @@ fun LockScreen(t: GlassTheme, onUnlock: () -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("🔒", fontSize = 56.sp)
+        Ic(R.drawable.ic_lock, t.accent, 56.dp)
         Spacer(Modifier.size(12.dp))
-        Text("Passenger", color = t.text, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        Text("PSMS", color = t.text, fontSize = 26.sp, fontWeight = FontWeight.Bold)
         Text(T("برنامه قفل است", "App is locked"), color = t.subText, fontSize = 14.sp)
         Spacer(Modifier.size(24.dp))
         Box(

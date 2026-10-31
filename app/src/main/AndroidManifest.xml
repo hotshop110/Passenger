@@ -15,7 +15,8 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@drawable/ic_launcher"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.Passenger">
@@ -84,7 +85,7 @@
             </intent-filter>
         </receiver>
 
-        <receiver android:name=".UnreadWidget" android:exported="true" android:label="Passenger">
+        <receiver android:name=".UnreadWidget" android:exported="true" android:label="PSMS">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
             </intent-filter>

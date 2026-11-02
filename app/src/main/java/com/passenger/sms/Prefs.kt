@@ -33,11 +33,23 @@ object Flags {
     val aliases = mutableStateOf<Map<String, String>>(emptyMap())
     val simFor = mutableStateOf<Map<String, String>>(emptyMap())
     val convBg = mutableStateOf<Map<String, String>>(emptyMap())
+    val vip = mutableStateOf<Set<String>>(emptySet())
+    val autoArchived = mutableStateOf<Set<String>>(emptySet())
+    val folders = mutableStateOf<List<String>>(emptyList())
+    val folderOf = mutableStateOf<Map<String, String>>(emptyMap())
+    val pinnedMsg = mutableStateOf<Map<String, String>>(emptyMap())
+    val groups = mutableStateOf<Map<String, String>>(emptyMap())
 
     fun init(ctx: Context) {
         if (sp != null) return
         val p = ctx.applicationContext.getSharedPreferences("flags", Context.MODE_PRIVATE)
         sp = p
+        vip.value = HashSet(p.getStringSet("vip", emptySet()) ?: emptySet())
+        autoArchived.value = HashSet(p.getStringSet("autoarch", emptySet()) ?: emptySet())
+        folders.value = (p.getString("folders", "") ?: "").split('\u0001').filter { it.isNotBlank() }
+        folderOf.value = p.getMap("folderof")
+        pinnedMsg.value = p.getMap("pinnedmsg")
+        groups.value = p.getMap("groups")
         pinned.value = HashSet(p.getStringSet("pinned", emptySet()) ?: emptySet())
         archived.value = HashSet(p.getStringSet("archived", emptySet()) ?: emptySet())
         blocked.value = HashSet(p.getStringSet("blocked", emptySet()) ?: emptySet())
@@ -67,6 +79,32 @@ object Flags {
     fun setBlocked(keys: Collection<String>, on: Boolean) = update(blocked, "blocked", keys, on)
     fun setStarred(ids: Collection<String>, on: Boolean) = update(starred, "starred", ids, on)
     fun setPrivate(keys: Collection<String>, on: Boolean) = update(privateSet, "private", keys, on)
+    fun setVip(keys: Collection<String>, on: Boolean) = update(vip, "vip", keys, on)
+    fun markAutoArchived(keys: Collection<String>) = update(autoArchived, "autoarch", keys, true)
+
+    fun addFolder(name: String) {
+        val n = name.trim()
+        if (n.isEmpty() || n in folders.value) return
+        folders.value = folders.value + n
+        sp?.edit()?.putString("folders", folders.value.joinToString("\u0001"))?.apply()
+    }
+
+    fun removeFolder(name: String) {
+        folders.value = folders.value - name
+        sp?.edit()?.putString("folders", folders.value.joinToString("\u0001"))?.apply()
+        val m = HashMap(folderOf.value)
+        val it = m.entries.iterator()
+        while (it.hasNext()) { if (it.next().value == name) it.remove() }
+        folderOf.value = m
+        sp?.edit()?.putMap("folderof", m)?.apply()
+    }
+
+    fun setFolder(keys: Collection<String>, name: String?) {
+        for (k in keys) updateMap(folderOf, "folderof", k, name)
+    }
+
+    fun setPinnedMsg(key: String, id: Long?) = updateMap(pinnedMsg, "pinnedmsg", key, id?.toString())
+    fun setGroup(name: String, numbers: String?) = updateMap(groups, "groups", name, numbers)
 
     fun setDraft(key: String, text: String) = updateMap(drafts, "drafts", key, if (text.isBlank()) null else text)
     fun setAlias(key: String, name: String) = updateMap(aliases, "aliases", key, name.trim())
@@ -200,6 +238,8 @@ object NotifPrefs {
 object Security {
     val enabled = mutableStateOf(false)
     val locked = mutableStateOf(false)
+    val timeoutSec = mutableStateOf(60)
+    val hasPin = mutableStateOf(false)
     private var sp: SharedPreferences? = null
     private var lastStop = 0L
 
@@ -208,6 +248,8 @@ object Security {
         val p = ctx.applicationContext.getSharedPreferences("security", Context.MODE_PRIVATE)
         sp = p
         enabled.value = p.getBoolean("lock", false)
+        timeoutSec.value = p.getInt("timeout", 60)
+        hasPin.value = (p.getString("pin_hash", "") ?: "").isNotEmpty()
         if (enabled.value) locked.value = true
     }
 
@@ -216,10 +258,42 @@ object Security {
         sp?.edit()?.putBoolean("lock", on)?.apply()
     }
 
+    fun setTimeout(sec: Int) {
+        timeoutSec.value = sec
+        sp?.edit()?.putInt("timeout", sec)?.apply()
+    }
+
+    private fun hash(salt: String, pin: String): String {
+        val d = java.security.MessageDigest.getInstance("SHA-256").digest((salt + pin).toByteArray(Charsets.UTF_8))
+        val sb = StringBuilder()
+        for (b in d) sb.append(String.format("%02x", b))
+        return sb.toString()
+    }
+
+    fun setPin(pin: String) {
+        val salt = java.util.UUID.randomUUID().toString()
+        sp?.edit()?.putString("pin_salt", salt)?.putString("pin_hash", hash(salt, pin))?.apply()
+        hasPin.value = true
+    }
+
+    fun clearPin() {
+        sp?.edit()?.remove("pin_salt")?.remove("pin_hash")?.apply()
+        hasPin.value = false
+    }
+
+    fun checkPin(pin: String): Boolean {
+        val p = sp ?: return false
+        val salt = p.getString("pin_salt", "") ?: ""
+        val h = p.getString("pin_hash", "") ?: ""
+        return h.isNotEmpty() && hash(salt, pin) == h
+    }
+
     fun onStop() { lastStop = System.currentTimeMillis() }
 
     fun onStart() {
-        if (enabled.value && lastStop > 0 && System.currentTimeMillis() - lastStop > 15000) {
+        if (enabled.value && lastStop > 0 &&
+            System.currentTimeMillis() - lastStop >= timeoutSec.value * 1000L
+        ) {
             locked.value = true
         }
     }

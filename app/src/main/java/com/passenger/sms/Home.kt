@@ -4,6 +4,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,16 +19,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,16 +48,23 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-fun inTab(c: Conv, tb: Cat, archived: Set<String>, blocked: Set<String>, priv: Set<String>): Boolean {
-    if (c.key in priv) return false
+class TabEnv(
+    val archived: Set<String>, val blocked: Set<String>,
+    val priv: Set<String>, val folderOf: Map<String, String>
+)
+
+fun inTab(c: Conv, tb: Cat, e: TabEnv): Boolean {
+    if (c.key in e.priv) return false
+    val isBlocked = c.key in e.blocked || c.spam
     return when (tb) {
-        Cat.ALL -> c.key !in archived && c.key !in blocked
-        Cat.ARCHIVE -> c.key in archived
-        Cat.SPAM -> c.key in blocked
-        else -> c.cat == tb && c.key !in archived && c.key !in blocked
+        Cat.ALL -> c.key !in e.archived && !isBlocked
+        Cat.ARCHIVE -> c.key in e.archived
+        Cat.SPAM -> isBlocked
+        else -> c.cat == tb && c.key !in e.archived && !isBlocked
     }
 }
 
@@ -73,20 +83,44 @@ fun HomeScreen(
     val blocked by Flags.blocked
     val priv by Flags.privateSet
     val drafts by Flags.drafts
+    val vip by Flags.vip
+    val folders by Flags.folders
+    val folderOf by Flags.folderOf
+    val shared by Store.sharedText
+    val swipeStart by Cfg.swipeStart
+    val swipeEnd by Cfg.swipeEnd
+    val showBal by Cfg.showBalances
+    val proActive by Pro.active
+    val pendingPage by Store.pendingPage
+
     var query by remember { mutableStateOf("") }
     var tab by remember { mutableStateOf(Cat.ALL) }
+    var folderTab by remember { mutableStateOf<String?>(null) }
     var simFilter by remember { mutableStateOf(-1) }
+    var unreadOnly by remember { mutableStateOf(false) }
     var filtersOpen by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf(setOf<String>()) }
     var askDelete by remember { mutableStateOf(false) }
     var askMove by remember { mutableStateOf(false) }
+    var askFolder by remember { mutableStateOf(false) }
     var askNew by remember { mutableStateOf(false) }
     var newNumber by remember { mutableStateOf("") }
+    var newFolder by remember { mutableStateOf("") }
+    var suggestions by remember { mutableStateOf(listOf<Pair<String, String>>()) }
+    var balances by remember { mutableStateOf(listOf<BalanceInfo>()) }
 
-    val shown = remember(convs, query, tab, simFilter, pinned, archived, blocked, priv) {
+    val env = TabEnv(archived, blocked, priv, folderOf)
+
+    val shown = remember(convs, query, tab, folderTab, simFilter, unreadOnly, pinned, archived, blocked, priv, folderOf) {
         convs.filter {
-            inTab(it, tab, archived, blocked, priv) &&
+            val okTab = if (folderTab != null) {
+                folderOf[it.key] == folderTab && it.key !in archived && it.key !in blocked && it.key !in priv && !it.spam
+            } else {
+                inTab(it, tab, env)
+            }
+            okTab &&
                 (simFilter < 0 || it.subId == simFilter) &&
+                (!unreadOnly || it.unread > 0) &&
                 (query.isBlank() ||
                     (it.name ?: "").contains(query, true) ||
                     it.address.contains(query) ||
@@ -95,7 +129,49 @@ fun HomeScreen(
     }
     val looksLikeNumber = query.length >= 3 && query.all { it.isDigit() || it == '+' }
 
+    LaunchedEffect(pendingPage) {
+        if (pendingPage == "NEW") {
+            askNew = true
+            Store.pendingPage.value = null
+        }
+    }
+    LaunchedEffect(newNumber, askNew) {
+        if (askNew && newNumber.length >= 2) {
+            delay(200)
+            suggestions = withContext(Dispatchers.IO) { Sms.searchContacts(ctx, newNumber) }
+        } else {
+            suggestions = emptyList()
+        }
+    }
+    LaunchedEffect(convs.size, showBal, proActive) {
+        balances = if (showBal && Pro.allowed("balances")) {
+            withContext(Dispatchers.IO) { Bank.latestBalances(ctx) }
+        } else emptyList()
+    }
+
     androidx.activity.compose.BackHandler(enabled = selected.isNotEmpty()) { selected = emptySet() }
+
+    fun markReadFor(addrs: List<String>) {
+        if (!Sms.isDefault(ctx)) {
+            toast(ctx, T("برای این کار باید برنامه پیش‌فرض باشد", "Set PSMS as default SMS app first"))
+            return
+        }
+        scope.launch {
+            withContext(Dispatchers.IO) { for (a in addrs) Sms.markRead(ctx, a) }
+            Store.refresh(ctx)
+        }
+    }
+
+    fun doSwipe(a: String, c: Conv) {
+        when (a) {
+            "pin" -> Flags.setPinned(listOf(c.key), c.key !in pinned)
+            "archive" -> Flags.setArchived(listOf(c.key), c.key !in archived)
+            "delete" -> { selected = setOf(c.key); askDelete = true }
+            "read" -> markReadFor(listOf(c.address))
+        }
+    }
+
+    val filterActive = tab != Cat.ALL || folderTab != null || simFilter >= 0 || unreadOnly
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
@@ -110,9 +186,15 @@ fun HomeScreen(
                             T("ستاره‌دارها", "Starred") to { onPage(Page.STARRED) },
                             T("زمان‌بندی‌شده‌ها", "Scheduled") to { onPage(Page.SCHEDULED) },
                             T("خلاصه بانکی", "Bank summary") to { onPage(Page.BANK) },
+                            T("آمار پیام‌ها", "Statistics") to { if (Pro.gate(ctx, "stats")) onPage(Page.STATS) },
                             T("ارسال گروهی", "Bulk send") to { onPage(Page.BULK) },
-                            T("پوشه خصوصی", "Private box") to { onPrivate() },
-                            T("سطل زباله", "Trash") to { onPage(Page.TRASH) }
+                            T("پوشه خصوصی", "Private box") to { if (Pro.gate(ctx, "private")) onPrivate() },
+                            T("پاک‌سازی", "Cleanup") to { if (Pro.gate(ctx, "cleanup")) onPage(Page.CLEANUP) },
+                            T("علامت همه به‌عنوان خوانده‌شده", "Mark all as read") to {
+                                markReadFor(convs.filter { it.unread > 0 }.map { it.address })
+                            },
+                            T("سطل زباله", "Trash") to { onPage(Page.TRASH) },
+                            T("نسخه PSMS Pro", "PSMS Pro") to { onPage(Page.PRO) }
                         )
                     )
                 }
@@ -135,20 +217,18 @@ fun HomeScreen(
                                 Flags.setBlocked(selected, tab != Cat.SPAM); selected = emptySet()
                             },
                             T("انتقال به دسته", "Move to category") to { askMove = true },
+                            T("انتقال به پوشه", "Move to folder") to { if (Pro.gate(ctx, "folders")) askFolder = true },
+                            T("مخاطب ویژه (VIP)", "Toggle VIP") to {
+                                val all = selected.all { it in vip }
+                                Flags.setVip(selected, !all); selected = emptySet()
+                            },
                             T("انتقال به پوشه خصوصی", "Move to private box") to {
-                                Flags.setPrivate(selected, true); selected = emptySet()
+                                if (Pro.gate(ctx, "private")) { Flags.setPrivate(selected, true); selected = emptySet() }
                             },
                             T("علامت خوانده‌شده", "Mark as read") to {
                                 val addrs = convs.filter { it.key in selected }.map { it.address }
                                 selected = emptySet()
-                                if (!Sms.isDefault(ctx)) {
-                                    toast(ctx, T("برای این کار باید برنامه پیش‌فرض باشد", "Set PSMS as default SMS app first"))
-                                } else {
-                                    scope.launch {
-                                        withContext(Dispatchers.IO) { for (a in addrs) Sms.markRead(ctx, a) }
-                                        Store.refresh(ctx)
-                                    }
-                                }
+                                markReadFor(addrs)
                             }
                         )
                     )
@@ -170,7 +250,24 @@ fun HomeScreen(
                 }
             }
 
-            val filterActive = tab != Cat.ALL || simFilter >= 0
+            val sh = shared
+            if (sh != null) {
+                Row(
+                    Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth()
+                        .glass(t, 14.dp).padding(start = 14.dp, top = 6.dp, bottom = 6.dp, end = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        T("گیرنده را انتخاب کنید: ", "Choose a recipient: ") + sh,
+                        color = t.text, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Box(Modifier.size(40.dp).clip(CircleShape).clickable { Store.sharedText.value = null }, contentAlignment = Alignment.Center) {
+                        Ic(R.drawable.ic_close, t.text, 18.dp)
+                    }
+                }
+            }
+
             Row(
                 Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -192,8 +289,12 @@ fun HomeScreen(
             }
 
             if (filterActive && !filtersOpen) {
+                val parts = ArrayList<String>()
+                if (folderTab != null) parts.add(folderTab!!) else if (tab != Cat.ALL) parts.add(tab.label)
+                if (unreadOnly) parts.add(T("نخوانده", "Unread"))
+                if (simFilter >= 0) parts.add("SIM " + ((sims.firstOrNull { it.subId == simFilter }?.slot ?: 0) + 1))
                 Text(
-                    tab.label + (if (simFilter >= 0) "  ·  SIM " + ((sims.firstOrNull { it.subId == simFilter }?.slot ?: 0) + 1) else ""),
+                    parts.joinToString("  ·  "),
                     color = t.accent, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 22.dp, vertical = 2.dp)
                 )
@@ -204,9 +305,26 @@ fun HomeScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    item { Chip(t, T("نخوانده", "Unread"), unreadOnly, R.drawable.ic_unread) { unreadOnly = !unreadOnly } }
                     items(Cat.values().toList()) { c ->
-                        val n = convs.count { inTab(it, c, archived, blocked, priv) }
-                        Chip(t, Fmt.digits("${c.label} $n", t.jalali), c == tab, c.icon) { tab = c }
+                        val n = convs.count { inTab(it, c, env) }
+                        Chip(t, Fmt.digits("${c.label} $n", t.jalali), folderTab == null && c == tab, c.icon) {
+                            tab = c; folderTab = null
+                        }
+                    }
+                }
+                if (folders.isNotEmpty()) {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(folders) { f ->
+                            val n = convs.count { folderOf[it.key] == f && it.key !in priv }
+                            Chip(t, Fmt.digits("$f $n", t.jalali), folderTab == f, R.drawable.ic_folder) {
+                                folderTab = if (folderTab == f) null else f
+                                tab = Cat.ALL
+                            }
+                        }
                     }
                 }
                 if (sims.size >= 2) {
@@ -217,6 +335,23 @@ fun HomeScreen(
                         item { Chip(t, T("همه سیم‌ها", "All SIMs"), simFilter < 0, R.drawable.ic_sim) { simFilter = -1 } }
                         items(sims) { s ->
                             Chip(t, "SIM ${s.slot + 1}", simFilter == s.subId, R.drawable.ic_sim) { simFilter = s.subId }
+                        }
+                    }
+                }
+            }
+
+            if (balances.isNotEmpty() && !filterActive && query.isBlank()) {
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    for (b in balances) {
+                        Column(
+                            Modifier.glass(t, 14.dp).clickable { onOpen(b.address) }.padding(horizontal = 14.dp, vertical = 8.dp)
+                        ) {
+                            Text(b.name ?: b.address, color = t.subText, fontSize = 11.sp, maxLines = 1)
+                            Text(money(b.amount, t), color = t.text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            Text(Fmt.date(b.date, t), color = t.subText, fontSize = 10.sp)
                         }
                     }
                 }
@@ -249,12 +384,12 @@ fun HomeScreen(
                 }
                 items(shown, key = { it.key }) { c ->
                     SwipeRow(
-                        t = t, c = c, enabled = selected.isEmpty(),
-                        onPin = { Flags.setPinned(listOf(c.key), c.key !in pinned) },
-                        onArchive = { Flags.setArchived(listOf(c.key), c.key !in archived) }
+                        t = t, enabled = selected.isEmpty(),
+                        startAction = swipeStart, endAction = swipeEnd,
+                        onAction = { a -> doSwipe(a, c) }
                     ) {
                         ConvRow(
-                            t, c, pinned = c.key in pinned, selected = c.key in selected,
+                            t, c, pinned = c.key in pinned, selected = c.key in selected, vip = c.key in vip,
                             draft = drafts[c.key], sim = if (sims.size >= 2) Sim.slotLabel(c.subId) else null,
                             onClick = {
                                 if (selected.isNotEmpty()) {
@@ -284,7 +419,22 @@ fun HomeScreen(
             onDismissRequest = { askNew = false },
             title = { Text(T("پیام جدید", "New message")) },
             text = {
-                GlassField(t, newNumber, { newNumber = it }, T("شماره یا نام", "Number"), Modifier.fillMaxWidth())
+                Column {
+                    GlassField(t, newNumber, { newNumber = it }, T("شماره یا نام مخاطب", "Number or contact name"), Modifier.fillMaxWidth())
+                    for ((n, num) in suggestions) {
+                        Row(
+                            Modifier.fillMaxWidth().clickable { askNew = false; newNumber = ""; onOpen(num) }.padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Ic(R.drawable.ic_person, LocalContentColor.current, 18.dp)
+                            Spacer(Modifier.size(10.dp))
+                            Column {
+                                Text(n, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                Text(num, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -300,7 +450,7 @@ fun HomeScreen(
 
     if (askDelete) {
         AlertDialog(
-            onDismissRequest = { askDelete = false },
+            onDismissRequest = { askDelete = false; selected = emptySet() },
             title = { Text(T("حذف مکالمه‌ها", "Delete conversations")) },
             text = {
                 Text(
@@ -317,6 +467,7 @@ fun HomeScreen(
                     if (!Sms.isDefault(ctx)) {
                         toast(ctx, T("برای حذف، PSMS باید برنامه پیش‌فرض پیامک باشد",
                             "PSMS must be the default SMS app to delete"))
+                        selected = emptySet()
                     } else {
                         val addrs = convs.filter { it.key in selected }.map { it.address }
                         selected = emptySet()
@@ -327,7 +478,7 @@ fun HomeScreen(
                     }
                 }) { Text(T("حذف", "Delete")) }
             },
-            dismissButton = { TextButton(onClick = { askDelete = false }) { Text(T("انصراف", "Cancel")) } }
+            dismissButton = { TextButton(onClick = { askDelete = false; selected = emptySet() }) { Text(T("انصراف", "Cancel")) } }
         )
     }
 
@@ -361,32 +512,80 @@ fun HomeScreen(
             dismissButton = { TextButton(onClick = { askMove = false }) { Text(T("انصراف", "Cancel")) } }
         )
     }
+
+    if (askFolder) {
+        AlertDialog(
+            onDismissRequest = { askFolder = false },
+            title = { Text(T("انتقال به پوشه", "Move to folder")) },
+            text = {
+                Column {
+                    for (f in folders) {
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
+                                Flags.setFolder(selected, f)
+                                selected = emptySet()
+                                askFolder = false
+                            }.padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Ic(R.drawable.ic_folder, LocalContentColor.current, 20.dp)
+                            Spacer(Modifier.size(10.dp))
+                            Text(f, fontSize = 16.sp)
+                        }
+                    }
+                    Text(
+                        T("بدون پوشه", "No folder"), fontSize = 16.sp,
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            Flags.setFolder(selected, null)
+                            selected = emptySet()
+                            askFolder = false
+                        }.padding(vertical = 12.dp)
+                    )
+                    GlassField(t, newFolder, { newFolder = it }, T("پوشه جدید…", "New folder…"), Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val n = newFolder.trim()
+                    if (n.isNotEmpty()) {
+                        Flags.addFolder(n)
+                        Flags.setFolder(selected, n)
+                        newFolder = ""
+                        selected = emptySet()
+                        askFolder = false
+                    }
+                }) { Text(T("ساخت و انتقال", "Create & move")) }
+            },
+            dismissButton = { TextButton(onClick = { askFolder = false }) { Text(T("انصراف", "Cancel")) } }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SwipeRow(
-    t: GlassTheme, c: Conv, enabled: Boolean,
-    onPin: () -> Unit, onArchive: () -> Unit,
+    t: GlassTheme, enabled: Boolean, startAction: String, endAction: String,
+    onAction: (String) -> Unit,
     content: @Composable () -> Unit
 ) {
     val state = rememberSwipeToDismissBoxState(
         confirmValueChange = { v ->
-            if (v == SwipeToDismissBoxValue.StartToEnd) onPin()
-            else if (v == SwipeToDismissBoxValue.EndToStart) onArchive()
+            if (v == SwipeToDismissBoxValue.StartToEnd) onAction(startAction)
+            else if (v == SwipeToDismissBoxValue.EndToStart) onAction(endAction)
             false
         }
     )
     SwipeToDismissBox(
         state = state,
-        enableDismissFromStartToEnd = enabled,
-        enableDismissFromEndToStart = enabled,
+        enableDismissFromStartToEnd = enabled && startAction != "none",
+        enableDismissFromEndToStart = enabled && endAction != "none",
         backgroundContent = {
             val toStart = state.dismissDirection == SwipeToDismissBoxValue.StartToEnd
+            val a = if (toStart) startAction else endAction
             Box(
                 Modifier.fillMaxSize().background(t.accent.copy(alpha = 0.35f)).padding(horizontal = 24.dp),
                 contentAlignment = if (toStart) Alignment.CenterStart else Alignment.CenterEnd
-            ) { Ic(if (toStart) R.drawable.ic_pin else R.drawable.ic_archive, t.text, 24.dp) }
+            ) { Ic(swipeIcon(a), t.text, 24.dp) }
         }
     ) { content() }
 }
@@ -394,7 +593,7 @@ fun SwipeRow(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ConvRow(
-    t: GlassTheme, c: Conv, pinned: Boolean, selected: Boolean, draft: String?, sim: String?,
+    t: GlassTheme, c: Conv, pinned: Boolean, selected: Boolean, vip: Boolean, draft: String?, sim: String?,
     onClick: () -> Unit, onLong: () -> Unit
 ) {
     val pad = if (t.dense) 7.dp else 12.dp
@@ -411,10 +610,16 @@ fun ConvRow(
             Avatar(t, c, av, selected)
             Spacer(Modifier.size(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(
-                    c.name ?: c.address, color = t.text, fontWeight = FontWeight.Bold, fontSize = 15.sp,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        c.name ?: c.address, color = t.text, fontWeight = FontWeight.Bold, fontSize = 15.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (vip) {
+                        Spacer(Modifier.size(4.dp))
+                        Ic(R.drawable.ic_vip, t.accent, 14.dp)
+                    }
+                }
                 if (draft != null) {
                     Text(
                         T("پیش‌نویس: ", "Draft: ") + draft, color = t.accent, fontSize = 13.sp,

@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">PSMS</string>
+    <string name="sc_new">New message</string>
+    <string name="sc_search">Search</string>
+    <string name="sc_private">Private box</string>
+    <string name="tile_new">New message</string>
 </resources>

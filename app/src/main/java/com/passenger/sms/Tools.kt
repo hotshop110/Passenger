@@ -1,6 +1,11 @@
 package com.passenger.sms
 
 import android.content.Intent
+import android.content.ClipboardManager
+import android.content.ClipData
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.Image
 import android.media.RingtoneManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -282,7 +287,14 @@ fun ScheduledPage(t: GlassTheme, onBack: () -> Unit) {
                 item { Text(T("موردی نیست", "Nothing scheduled"), color = t.subText, modifier = Modifier.fillMaxWidth().padding(24.dp), textAlign = TextAlign.Center) }
             }
             items(sched, key = { it.id }) { it ->
-                val kind = if (it.type == "send") T("ارسال", "Send") else T("یادآوری", "Reminder")
+                val rp = when (it.repeat) {
+                    "daily" -> T(" · هر روز", " · daily")
+                    "weekly" -> T(" · هر هفته", " · weekly")
+                    "monthly" -> T(" · هر ماه", " · monthly")
+                    "yearly" -> T(" · هر سال", " · yearly")
+                    else -> ""
+                }
+                val kind = (if (it.type == "send") T("ارسال", "Send") else T("یادآوری", "Reminder")) + rp
                 MsgRow(
                     t, kind + " · " + it.address, it.body, Fmt.time(it.at, t, withDate = true), {},
                     R.drawable.ic_close
@@ -353,12 +365,37 @@ fun money(v: Long, t: GlassTheme): String = Fmt.digits(String.format(Locale.US, 
 @Composable
 fun BankPage(t: GlassTheme, onBack: () -> Unit) {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val budget by Cfg.budget
+    val proActive by Pro.active
     var rows by remember { mutableStateOf<List<MonthSum>?>(null) }
-    LaunchedEffect(Unit) { rows = withContext(Dispatchers.IO) { Bank.load(ctx, t.jalali) } }
+    var accounts by remember { mutableStateOf(listOf<AccountSum>()) }
+    LaunchedEffect(Unit) {
+        rows = withContext(Dispatchers.IO) { Bank.load(ctx, t.jalali) }
+        accounts = withContext(Dispatchers.IO) { Bank.byAccount(ctx) }
+    }
+    val csvLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val n = withContext(Dispatchers.IO) {
+                    try { Csv.exportBank(ctx, uri, Bank.txList(ctx)) } catch (e: Exception) { -1 }
+                }
+                toast(ctx, if (n >= 0) T("$n تراکنش ذخیره شد", "$n transactions exported") else T("خروجی ناموفق بود", "Export failed"))
+            }
+        }
+    }
     val list = rows
     val maxVal = list?.maxOfOrNull { maxOf(it.credit, it.debit) } ?: 1L
+    val ymdNow = Fmt.ymd(System.currentTimeMillis(), true)
+    val thisMonth = list?.firstOrNull { it.y == ymdNow[0] && it.m == ymdNow[1] }
     Column(Modifier.fillMaxSize()) {
-        AppBar(t, T("خلاصه پیام‌های بانکی", "Bank summary"), onBack = onBack)
+        AppBar(t, T("خلاصه پیام‌های بانکی", "Bank summary"), onBack = onBack) {
+            BarBtn(if (t.flat) t.barText else t.text, R.drawable.ic_download) {
+                if (Pro.gate(ctx, "csv")) csvLauncher.launch("bank.csv")
+            }
+        }
         LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
                 Text(
@@ -366,6 +403,24 @@ fun BankPage(t: GlassTheme, onBack: () -> Unit) {
                         "Amounts are detected from bank SMS text over the last 12 months and may not be exact."),
                     color = t.subText, fontSize = 12.sp
                 )
+            }
+            if (budget > 0 && Pro.allowed("budget")) {
+                item {
+                    val spent = thisMonth?.debit ?: 0L
+                    val frac = (spent.toFloat() / budget.toFloat()).coerceIn(0f, 1f)
+                    Column(Modifier.fillMaxWidth().glass(t, 14.dp).padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(T("بودجه این ماه", "This month's budget"), color = t.text, fontWeight = FontWeight.Bold)
+                        Box(Modifier.fillMaxWidth().height(10.dp).clip(CircleShape).background(t.divider)) {
+                            Box(
+                                Modifier.fillMaxWidth(frac.coerceAtLeast(0.02f)).height(10.dp).clip(CircleShape)
+                                    .background(if (spent >= budget) Color(0xFFE53935) else t.accent)
+                            )
+                        }
+                        Text(money(spent, t) + " / " + money(budget, t), color = t.subText, fontSize = 12.sp)
+                    }
+                }
+            } else if (budget > 0 && !proActive) {
+                item { Text(T("بودجه ماهانه در نسخه Pro فعال می‌شود.", "Monthly budget is part of PSMS Pro."), color = t.subText, fontSize = 12.sp) }
             }
             if (list == null) {
                 item { Text(T("در حال محاسبه…", "Calculating…"), color = t.subText) }
@@ -386,24 +441,69 @@ fun BankPage(t: GlassTheme, onBack: () -> Unit) {
                     Text(Fmt.digits(T("${r.count} تراکنش", "${r.count} transactions"), t.jalali), color = t.subText, fontSize = 11.sp)
                 }
             }
+            if (accounts.isNotEmpty()) {
+                item { Text(T("بر اساس حساب / کارت (۴ رقم آخر)", "By account / card (last 4 digits)"), color = t.text, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp)) }
+                items(accounts) { a ->
+                    Column(Modifier.fillMaxWidth().glass(t, 14.dp).padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("••••  " + Fmt.digits(a.tail, t.jalali), color = t.text, fontWeight = FontWeight.Bold)
+                        Text(T("برداشت: ", "Spent: ") + money(a.debit, t) + "   " + T("واریز: ", "Received: ") + money(a.credit, t), color = t.subText, fontSize = 12.sp)
+                        Text(Fmt.digits(T("${a.count} تراکنش", "${a.count} transactions"), t.jalali), color = t.subText, fontSize = 11.sp)
+                    }
+                }
+            }
         }
     }
 }
 
 // ---------- bulk send ----------
 
+fun parseRecipients(src: String): List<Pair<String, String>> {
+    val out = ArrayList<Pair<String, String>>()
+    val seen = HashSet<String>()
+    for (line in src.split('\n')) {
+        val tokens = line.split(',', '،', ';', '\t').map { it.trim() }.filter { it.isNotEmpty() }
+        if (tokens.isEmpty()) continue
+        val nums = tokens.filter { tk ->
+            val n = Fmt.norm(tk)
+            n.count { it.isDigit() } >= 5 && n.all { it.isDigit() || it == '+' || it == ' ' || it == '-' }
+        }
+        val names = tokens.filter { it !in nums }
+        if (nums.isEmpty()) continue
+        for (n in nums) {
+            val clean = Fmt.norm(n).replace(" ", "").replace("-", "")
+            val dk = clean.filter { it.isDigit() }.takeLast(9)
+            if (seen.add(dk)) out.add(Pair(clean, if (nums.size == 1) names.joinToString(" ") else ""))
+        }
+    }
+    return out
+}
+
 @Composable
 fun BulkPage(t: GlassTheme, onBack: () -> Unit) {
     val ctx = LocalContext.current
     val app = ctx.applicationContext
     val sims by Sim.sims
+    val groups by Flags.groups
     var numbers by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
     var sub by remember { mutableStateOf(-1) }
     var confirm by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf("") }
+    var askGroup by remember { mutableStateOf(false) }
+    var groupName by remember { mutableStateOf("") }
 
-    val list = numbers.split(',', '،', '\n', ' ').map { it.trim() }.filter { n -> n.count { it.isDigit() } >= 5 }.distinct()
+    val csvPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            try {
+                val txt = ctx.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.readText() ?: ""
+                numbers = txt.replace("\r", "").removePrefix("\uFEFF")
+            } catch (e: Exception) {
+                toast(ctx, T("خواندن فایل ناموفق بود", "Could not read the file"))
+            }
+        }
+    }
+
+    val list = parseRecipients(numbers)
 
     Column(Modifier.fillMaxSize().imePadding().navigationBarsPadding()) {
         AppBar(t, T("ارسال گروهی", "Bulk send"), onBack = onBack)
@@ -411,8 +511,35 @@ fun BulkPage(t: GlassTheme, onBack: () -> Unit) {
             Modifier.verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(T("شماره‌ها را با ویرگول یا خط جدید جدا کنید.", "Separate numbers with commas or new lines."), color = t.subText, fontSize = 13.sp)
-            GlassField(t, numbers, { numbers = it }, T("شماره‌ها", "Numbers"), Modifier.fillMaxWidth(), singleLine = false)
+            Text(
+                T("هر خط یک گیرنده: «شماره» یا «شماره، نام». در متن پیام می‌توانید {نام} بنویسید.",
+                    "One recipient per line: \"number\" or \"number, name\". Use {name} in the message."),
+                color = t.subText, fontSize = 13.sp
+            )
+            GlassField(t, numbers, { numbers = it }, T("گیرنده‌ها", "Recipients"), Modifier.fillMaxWidth(), singleLine = false)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                Chip(t, T("وارد کردن از فایل CSV", "Import CSV"), false, R.drawable.ic_download) {
+                    if (Pro.gate(ctx, "bulk_csv")) csvPicker.launch(arrayOf("text/*", "application/vnd.ms-excel", "*/*"))
+                }
+                Chip(t, T("ذخیره به‌عنوان گروه", "Save as group"), false, R.drawable.ic_folder) {
+                    if (Pro.gate(ctx, "bulk_groups")) {
+                        if (list.isEmpty()) toast(ctx, T("اول گیرنده وارد کنید", "Add recipients first")) else askGroup = true
+                    }
+                }
+            }
+            if (groups.isNotEmpty()) {
+                Text(T("گروه‌های ذخیره‌شده", "Saved groups"), color = t.text, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                    for ((gn, gv) in groups) {
+                        Chip(t, gn, false, R.drawable.ic_person) {
+                            if (Pro.gate(ctx, "bulk_groups")) numbers = (if (numbers.isBlank()) "" else numbers.trimEnd() + "\n") + gv
+                        }
+                        Box(Modifier.size(32.dp).clip(CircleShape).clickable { Flags.setGroup(gn, null) }, contentAlignment = Alignment.Center) {
+                            Ic(R.drawable.ic_close, t.subText, 14.dp)
+                        }
+                    }
+                }
+            }
             GlassField(t, body, { body = it }, T("متن پیام", "Message"), Modifier.fillMaxWidth(), singleLine = false)
             if (sims.size >= 2) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -420,13 +547,32 @@ fun BulkPage(t: GlassTheme, onBack: () -> Unit) {
                     for (s in sims) Chip(t, "SIM ${s.slot + 1}", sub == s.subId) { sub = s.subId }
                 }
             }
-            Text(Fmt.digits(T("${list.size} شماره معتبر", "${list.size} valid number(s)"), t.jalali), color = t.text, fontSize = 13.sp)
+            Text(Fmt.digits(T("${list.size} گیرنده معتبر", "${list.size} valid recipient(s)"), t.jalali), color = t.text, fontSize = 13.sp)
             if (progress.isNotEmpty()) Text(progress, color = t.accent, fontWeight = FontWeight.Bold)
-            ActionBtn(t, T("ارسال", "Send")) {
-                if (list.isEmpty() || body.isBlank()) toast(ctx, T("شماره و متن را وارد کنید", "Enter numbers and a message"))
+            ActionBtn(t, T("ارسال", "Send"), R.drawable.ic_send) {
+                if (list.isEmpty() || body.isBlank()) toast(ctx, T("گیرنده و متن را وارد کنید", "Enter recipients and a message"))
                 else confirm = true
             }
         }
+    }
+
+    if (askGroup) {
+        AlertDialog(
+            onDismissRequest = { askGroup = false },
+            title = { Text(T("نام گروه", "Group name")) },
+            text = { GlassField(t, groupName, { groupName = it }, T("مثلاً مشتری‌ها", "e.g. Customers"), Modifier.fillMaxWidth()) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val n = groupName.trim()
+                    if (n.isNotEmpty()) {
+                        Flags.setGroup(n, list.joinToString("\n") { if (it.second.isNotEmpty()) it.first + ", " + it.second else it.first })
+                        groupName = ""
+                        askGroup = false
+                    }
+                }) { Text(T("ذخیره", "Save")) }
+            },
+            dismissButton = { TextButton(onClick = { askGroup = false }) { Text(T("انصراف", "Cancel")) } }
+        )
     }
 
     if (confirm) {
@@ -436,8 +582,8 @@ fun BulkPage(t: GlassTheme, onBack: () -> Unit) {
             text = {
                 Text(
                     Fmt.digits(
-                        T("پیام برای ${list.size} شماره ارسال می‌شود." + (if (list.size > 30) " تعداد زیاد ممکن است از طرف اپراتور محدود شود." else ""),
-                            "The message will be sent to ${list.size} number(s)." + (if (list.size > 30) " Large batches may be limited by your carrier." else "")),
+                        T("پیام برای ${list.size} نفر ارسال می‌شود." + (if (list.size > 30) " تعداد زیاد ممکن است از طرف اپراتور محدود شود." else ""),
+                            "The message will be sent to ${list.size} recipient(s)." + (if (list.size > 30) " Large batches may be limited by your carrier." else "")),
                         t.jalali
                     )
                 )
@@ -445,18 +591,19 @@ fun BulkPage(t: GlassTheme, onBack: () -> Unit) {
             confirmButton = {
                 TextButton(onClick = {
                     confirm = false
-                    val nums = list
-                    val msg = body.trim()
+                    val recips = list
+                    val tpl = body.trim()
                     val s = sub
                     Store.scope.launch {
                         var done = 0
-                        for (n in nums) {
-                            Sms.send(app, n, msg, s)
+                        for ((num, nm) in recips) {
+                            val msg = tpl.replace("{name}", nm).replace("{نام}", nm)
+                            Sms.send(app, num, msg, s)
                             done++
-                            progress = Fmt.digits(T("ارسال $done از ${nums.size}", "Sent $done of ${nums.size}"), t.jalali)
+                            progress = Fmt.digits(T("ارسال $done از ${recips.size}", "Sent $done of ${recips.size}"), t.jalali)
                             delay(1500)
                         }
-                        progress = Fmt.digits(T("پایان: ${nums.size} پیام", "Done: ${nums.size} messages"), t.jalali)
+                        progress = Fmt.digits(T("پایان: ${recips.size} پیام", "Done: ${recips.size} messages"), t.jalali)
                         Store.refresh(app)
                     }
                 }) { Text(T("ارسال", "Send")) }
@@ -491,7 +638,7 @@ fun PrivatePage(t: GlassTheme, onBack: () -> Unit, onOpen: (String) -> Unit) {
             }
             items(shown, key = { it.key }) { c ->
                 ConvRow(
-                    t, c, pinned = false, selected = false, draft = null,
+                    t, c, pinned = false, selected = false, vip = false, draft = null,
                     sim = if (sims.size >= 2) Sim.slotLabel(c.subId) else null,
                     onClick = { onOpen(c.address) },
                     onLong = {
@@ -569,6 +716,263 @@ fun RulesPage(t: GlassTheme, onBack: () -> Unit) {
                 }
             }
             ActionBtn(t, T("بازگشت به کلمات پیش‌فرض", "Reset to defaults")) { Rules.reset(); gen++ }
+        }
+    }
+}
+
+
+// ---------- statistics ----------
+
+@Composable
+fun StatsPage(t: GlassTheme, onBack: () -> Unit) {
+    val ctx = LocalContext.current
+    val sims by Sim.sims
+    var data by remember { mutableStateOf<StatsData?>(null) }
+    LaunchedEffect(Unit) { data = withContext(Dispatchers.IO) { Stats.compute(ctx) } }
+    val d = data
+    Column(Modifier.fillMaxSize()) {
+        AppBar(t, T("آمار پیام‌ها", "Statistics"), onBack = onBack)
+        if (d == null) {
+            Text(T("در حال محاسبه…", "Calculating…"), color = t.subText, modifier = Modifier.padding(24.dp))
+        } else {
+            LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                item {
+                    Column(Modifier.fillMaxWidth().glass(t, 14.dp).padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(Fmt.digits("${d.total}", t.jalali), color = t.text, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                        Text(T("کل پیام‌ها", "Total messages"), color = t.subText, fontSize = 12.sp)
+                        Text(Fmt.digits(T("دریافتی ${d.received}  ·  ارسالی ${d.sent}", "Received ${d.received}  ·  Sent ${d.sent}"), t.jalali), color = t.text, fontSize = 13.sp)
+                    }
+                }
+                if (d.months.isNotEmpty()) {
+                    item {
+                        val mx = (d.months.maxOfOrNull { it.third } ?: 1).coerceAtLeast(1)
+                        Column(Modifier.fillMaxWidth().glass(t, 14.dp).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(T("پیام‌ها در ماه‌های اخیر", "Messages per month"), color = t.text, fontWeight = FontWeight.Bold)
+                            for ((y, m, n) in d.months) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(Fmt.monthName(m, true) + " " + Fmt.digits("$y", true), color = t.subText, fontSize = 11.sp, modifier = Modifier.width(96.dp))
+                                    Box(Modifier.weight(1f).height(8.dp).clip(CircleShape).background(t.divider)) {
+                                        Box(Modifier.fillMaxWidth((n.toFloat() / mx).coerceIn(0.03f, 1f)).height(8.dp).clip(CircleShape).background(t.accent))
+                                    }
+                                    Text(Fmt.digits("$n", t.jalali), color = t.text, fontSize = 11.sp, modifier = Modifier.padding(start = 8.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+                if (d.top.isNotEmpty()) {
+                    item {
+                        val mx = (d.top.maxOfOrNull { it.third } ?: 1).coerceAtLeast(1)
+                        Column(Modifier.fillMaxWidth().glass(t, 14.dp).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(T("پرتکرارترین فرستنده‌ها", "Top senders"), color = t.text, fontWeight = FontWeight.Bold)
+                            for ((addr, nm, n) in d.top) {
+                                Column {
+                                    Row {
+                                        Text(nm ?: addr, color = t.text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                        Text(Fmt.digits("$n", t.jalali), color = t.subText, fontSize = 12.sp)
+                                    }
+                                    Box(Modifier.fillMaxWidth().height(6.dp).clip(CircleShape).background(t.divider)) {
+                                        Box(Modifier.fillMaxWidth((n.toFloat() / mx).coerceIn(0.03f, 1f)).height(6.dp).clip(CircleShape).background(t.accent))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if (d.bySim.isNotEmpty()) {
+                    item {
+                        Column(Modifier.fillMaxWidth().glass(t, 14.dp).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(T("سهم هر سیم‌کارت", "Per SIM"), color = t.text, fontWeight = FontWeight.Bold)
+                            for ((sid, n) in d.bySim) {
+                                val slot = sims.firstOrNull { it.subId == sid }?.slot
+                                Text((if (slot != null) "SIM ${slot + 1}" else "SIM ?") + "  —  " + Fmt.digits("$n", t.jalali), color = t.text, fontSize = 13.sp)
+                            }
+                        }
+                    }
+                }
+                if (d.byCat.isNotEmpty()) {
+                    item {
+                        Column(Modifier.fillMaxWidth().glass(t, 14.dp).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(T("پیام‌های دریافتی بر اساس دسته", "Received by category"), color = t.text, fontWeight = FontWeight.Bold)
+                            for ((c, n) in d.byCat.entries.sortedByDescending { it.value }) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Ic(c.icon, t.accent, 18.dp)
+                                    Spacer(Modifier.size(8.dp))
+                                    Text(c.label, color = t.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                                    Text(Fmt.digits("$n", t.jalali), color = t.subText, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---------- cleanup ----------
+
+@Composable
+fun CleanupPage(t: GlassTheme, onBack: () -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var groups by remember { mutableStateOf<List<CleanupGroup>?>(null) }
+    var askFor by remember { mutableStateOf<CleanupGroup?>(null) }
+    LaunchedEffect(Unit) { groups = withContext(Dispatchers.IO) { Cleanup.scan(ctx) } }
+    fun title(id: String) = when (id) {
+        "promo" -> T("تبلیغات قدیمی‌تر از ۳۰ روز", "Promos older than 30 days")
+        "otp" -> T("کدهای تأیید قدیمی‌تر از ۷ روز", "Codes older than 7 days")
+        else -> T("پیام‌های ناشناس قدیمی‌تر از یک سال", "Unknown senders older than a year")
+    }
+    Column(Modifier.fillMaxSize()) {
+        AppBar(t, T("پاک‌سازی", "Cleanup"), onBack = onBack)
+        val g = groups
+        if (g == null) {
+            Text(T("در حال بررسی…", "Scanning…"), color = t.subText, modifier = Modifier.padding(24.dp))
+        } else {
+            LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(g) { grp ->
+                    Column(Modifier.fillMaxWidth().glass(t, 14.dp).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(title(grp.id), color = t.text, fontWeight = FontWeight.Bold)
+                        Text(
+                            Fmt.digits(T("${grp.ids.size} پیام · حدود ${grp.bytes / 1024 + 1} کیلوبایت", "${grp.ids.size} messages · about ${grp.bytes / 1024 + 1} KB"), t.jalali),
+                            color = t.subText, fontSize = 12.sp
+                        )
+                        if (grp.ids.isNotEmpty()) {
+                            Chip(t, T("حذف", "Delete"), false, R.drawable.ic_trash) { askFor = grp }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    val ask = askFor
+    if (ask != null) {
+        AlertDialog(
+            onDismissRequest = { askFor = null },
+            title = { Text(T("حذف پیام‌ها", "Delete messages")) },
+            text = { Text(Fmt.digits(T("${ask.ids.size} پیام برای همیشه حذف می‌شود.", "${ask.ids.size} messages will be deleted permanently."), t.jalali)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    askFor = null
+                    if (!Sms.isDefault(ctx)) {
+                        toast(ctx, T("برای حذف، PSMS باید برنامه پیش‌فرض پیامک باشد", "PSMS must be the default SMS app to delete"))
+                    } else {
+                        scope.launch {
+                            withContext(Dispatchers.IO) { Sms.deleteMessages(ctx, ask.ids, false) }
+                            groups = withContext(Dispatchers.IO) { Cleanup.scan(ctx) }
+                            Store.refresh(ctx)
+                        }
+                    }
+                }) { Text(T("حذف", "Delete")) }
+            },
+            dismissButton = { TextButton(onClick = { askFor = null }) { Text(T("انصراف", "Cancel")) } }
+        )
+    }
+}
+
+// ---------- PSMS Pro ----------
+
+fun proFeatures(): List<Pair<String, String>> = listOf(
+    "stats" to T("آمار پیام‌ها و نمودارها", "Message statistics & charts"),
+    "balances" to T("کارت موجودی حساب‌ها روی صفحه اصلی", "Account balance cards on the home screen"),
+    "budget" to T("بودجه ماهانه و هشدار هزینه", "Monthly budget & spending alert"),
+    "private" to T("پوشه خصوصی با قفل", "Locked private box"),
+    "folders" to T("پوشه‌های دلخواه", "Custom folders"),
+    "repeat" to T("پیام تکرارشونده و تبریک تولد", "Recurring messages & birthdays"),
+    "bulk_groups" to T("گروه‌های ارسال گروهی", "Bulk-send groups"),
+    "bulk_csv" to T("ارسال گروهی از فایل CSV با نام شخصی‌شده", "Bulk send from CSV with personalised names"),
+    "autobackup" to T("پشتیبان‌گیری خودکار روزانه", "Daily automatic backup"),
+    "pdf" to T("خروجی PDF مکالمه", "Conversation PDF export"),
+    "csv" to T("خروجی CSV / اکسل", "CSV / Excel export"),
+    "cardimage" to T("اشتراک‌گذاری پیام به‌صورت تصویر", "Share messages as images"),
+    "cleanup" to T("ابزار پاک‌سازی هوشمند", "Smart cleanup tool"),
+    "notif_cat" to T("صدا و رنگ اعلان برای هر دسته", "Notification sound & color per category")
+)
+
+@Composable
+fun ProPage(t: GlassTheme, onBack: () -> Unit) {
+    val ctx = LocalContext.current
+    val active by Pro.active
+    var code by remember { mutableStateOf("") }
+    val devId = remember { Pro.deviceId(ctx) }
+    Column(Modifier.fillMaxSize().imePadding().navigationBarsPadding()) {
+        AppBar(t, "PSMS Pro", onBack = onBack)
+        Column(
+            Modifier.verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Column(
+                Modifier.fillMaxWidth().glass(t, 18.dp).padding(18.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.logo_psms), contentDescription = null,
+                    modifier = Modifier.size(72.dp).clip(RoundedCornerShape(18.dp))
+                )
+                Text("PSMS Pro", color = t.text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    if (active) T("فعال است. از امکانات حرفه‌ای لذت ببرید.", "Active. Enjoy the pro features.")
+                    else T("امکانات حرفه‌ای را باز کنید", "Unlock the professional features"),
+                    color = if (active) t.accent else t.subText, fontSize = 13.sp, fontWeight = FontWeight.Bold
+                )
+            }
+
+            Section(t, T("امکانات Pro", "Pro features"), R.drawable.ic_star) {
+                for ((id, label) in proFeatures()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Ic(if (active || id !in Pro.LOCKED) R.drawable.ic_check_all else R.drawable.ic_lock, if (active) t.accent else t.subText, 18.dp)
+                        Spacer(Modifier.size(10.dp))
+                        Text(label, color = t.text, fontSize = 14.sp)
+                    }
+                }
+            }
+
+            if (!active) {
+                Section(t, T("خرید و فعال‌سازی", "Get Pro"), R.drawable.ic_key) {
+                    Text(
+                        T("۱) کد دستگاه را برای من بفرستید.  ۲) بعد از پرداخت، کد فعال‌سازی مخصوص همین دستگاه را دریافت می‌کنید.  ۳) کد را اینجا وارد کنید.",
+                            "1) Send me your device ID.  2) After payment you receive an activation code for this device only.  3) Paste it below."),
+                        color = t.subText, fontSize = 13.sp
+                    )
+                    Row(
+                        Modifier.fillMaxWidth().glass(t, 14.dp).clickable {
+                            val cm = ctx.getSystemService(ClipboardManager::class.java)
+                            cm.setPrimaryClip(ClipData.newPlainText("device", devId))
+                            toast(ctx, T("کد دستگاه کپی شد", "Device ID copied"))
+                        }.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(T("کد دستگاه", "Device ID"), color = t.subText, fontSize = 11.sp)
+                            Text(devId, color = t.text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Ic(R.drawable.ic_copy, t.accent, 20.dp)
+                    }
+                    ActionBtn(t, T("ارسال کد دستگاه با ایمیل", "Email my device ID"), R.drawable.ic_mail) {
+                        try {
+                            val i = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$CONTACT_EMAIL"))
+                            i.putExtra(Intent.EXTRA_SUBJECT, "PSMS Pro - $devId")
+                            i.putExtra(Intent.EXTRA_TEXT, "Device ID: $devId")
+                            ctx.startActivity(i)
+                        } catch (e: Exception) { }
+                    }
+                    GlassField(t, code, { code = it }, T("کد فعال‌سازی", "Activation code"), Modifier.fillMaxWidth(), singleLine = false)
+                    ActionBtn(t, T("فعال‌سازی", "Activate"), R.drawable.ic_check_all) {
+                        if (Pro.activate(ctx, code)) {
+                            toast(ctx, T("PSMS Pro فعال شد 🎉", "PSMS Pro activated"))
+                            code = ""
+                        } else {
+                            toast(ctx, T("کد معتبر نیست", "Invalid code"))
+                        }
+                    }
+                }
+            } else {
+                Section(t, T("وضعیت", "Status"), R.drawable.ic_shield) {
+                    Text(T("کد دستگاه: ", "Device ID: ") + devId, color = t.subText, fontSize = 12.sp)
+                }
+            }
         }
     }
 }

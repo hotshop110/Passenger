@@ -11,7 +11,8 @@ import org.json.JSONObject
 
 data class SchedItem(
     val id: Long, val type: String, val at: Long,
-    val address: String, val body: String, val subId: Int, val extra: String
+    val address: String, val body: String, val subId: Int, val extra: String,
+    val repeat: String = ""
 )
 
 object Sched {
@@ -26,7 +27,8 @@ object Sched {
                 out.add(
                     SchedItem(
                         o.getLong("id"), o.getString("t"), o.getLong("at"),
-                        o.getString("a"), o.getString("b"), o.optInt("s", -1), o.optString("x", "")
+                        o.getString("a"), o.getString("b"), o.optInt("s", -1), o.optString("x", ""),
+                        o.optString("r", "")
                     )
                 )
             }
@@ -39,7 +41,7 @@ object Sched {
         for (it in list) {
             val o = JSONObject()
             o.put("id", it.id); o.put("t", it.type); o.put("at", it.at)
-            o.put("a", it.address); o.put("b", it.body); o.put("s", it.subId); o.put("x", it.extra)
+            o.put("a", it.address); o.put("b", it.body); o.put("s", it.subId); o.put("x", it.extra); o.put("r", it.repeat)
             arr.put(o)
         }
         sp(ctx).edit().putString("items", arr.toString()).apply()
@@ -60,11 +62,11 @@ object Sched {
         am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi(ctx, item.id))
     }
 
-    fun schedule(ctx: Context, type: String, at: Long, address: String, body: String, subId: Int, extra: String = ""): SchedItem {
+    fun schedule(ctx: Context, type: String, at: Long, address: String, body: String, subId: Int, extra: String = "", repeat: String = ""): SchedItem {
         var id = System.currentTimeMillis()
         val cur = all(ctx)
         while (cur.any { it.id == id }) id++
-        val item = SchedItem(id, type, at, address, body, subId, extra)
+        val item = SchedItem(id, type, at, address, body, subId, extra, repeat)
         save(ctx, cur + item)
         alarm(ctx, item)
         return item
@@ -98,6 +100,24 @@ object Sched {
             "retry" -> Sms.send(ctx, item.address, item.body, item.subId, Uri.parse(item.extra))
             "remind" -> Notifier.reminder(ctx, item)
         }
+        if (item.repeat.isNotEmpty()) {
+            var next = nextTime(item.at, item.repeat)
+            while (next <= System.currentTimeMillis()) next = nextTime(next, item.repeat)
+            schedule(ctx, item.type, next, item.address, item.body, item.subId, item.extra, item.repeat)
+        }
+    }
+
+    fun nextTime(at: Long, repeat: String): Long {
+        val c = java.util.Calendar.getInstance()
+        c.timeInMillis = at
+        when (repeat) {
+            "daily" -> c.add(java.util.Calendar.DAY_OF_YEAR, 1)
+            "weekly" -> c.add(java.util.Calendar.DAY_OF_YEAR, 7)
+            "monthly" -> c.add(java.util.Calendar.MONTH, 1)
+            "yearly" -> c.add(java.util.Calendar.YEAR, 1)
+            else -> c.add(java.util.Calendar.DAY_OF_YEAR, 1)
+        }
+        return c.timeInMillis
     }
 }
 

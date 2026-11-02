@@ -1,8 +1,11 @@
 package com.passenger.sms
 
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricManager
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,7 +25,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,7 +40,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -72,6 +79,49 @@ fun ThemeTile(t: GlassTheme, idx: Int, selected: Boolean, modifier: Modifier, on
 }
 
 @Composable
+fun LockedBtn(t: GlassTheme, label: String, onPro: () -> Unit) {
+    ActionBtn(t, label + "  —  PSMS Pro", R.drawable.ic_lock) { onPro() }
+}
+
+@Composable
+fun AboutCard(t: GlassTheme) {
+    val ctx = LocalContext.current
+    val ver = remember {
+        try { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "" } catch (e: Exception) { "" }
+    }
+    Column(
+        Modifier.fillMaxWidth().glass(t, 20.dp).padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Image(
+            painter = painterResource(R.drawable.logo_psms), contentDescription = null,
+            modifier = Modifier.size(84.dp).clip(RoundedCornerShape(20.dp))
+        )
+        Text("PSMS", color = t.text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text(T("نسخه ", "Version ") + Fmt.digits(ver, t.jalali), color = t.subText, fontSize = 12.sp)
+        Text(
+            T("امنیت و سرعت را احساس کنید", "Feel the security and speed"),
+            color = t.accent, fontSize = 16.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center
+        )
+        Text(
+            T("پیام‌رسانی به‌صورت شیک و مدرن؛ سریع، امن و بدون دردسر.", "Sleek, modern messaging — fast, secure and effortless."),
+            color = t.subText, fontSize = 13.sp, textAlign = TextAlign.Center
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Chip(t, CONTACT_EMAIL, false, R.drawable.ic_mail) {
+                try {
+                    val i = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$CONTACT_EMAIL"))
+                    i.putExtra(Intent.EXTRA_SUBJECT, "PSMS " + ver)
+                    ctx.startActivity(i)
+                } catch (e: Exception) { }
+            }
+        }
+        Text(T("برای ارتباط و پیشنهاد، ایمیل بزنید", "Contact us for support and ideas"), color = t.subText, fontSize = 11.sp)
+    }
+}
+
+@Composable
 fun SettingsScreen(
     raw: GlassTheme, t: GlassTheme, onChange: (GlassTheme) -> Unit, onBack: () -> Unit,
     isDefault: Boolean, onDefault: () -> Unit, onPage: (Page) -> Unit
@@ -79,6 +129,8 @@ fun SettingsScreen(
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val lockOn by Security.enabled
+    val timeout by Security.timeoutSec
+    val hasPin by Security.hasPin
     val undo by Cfg.undoSecs
     val otpDays by Cfg.otpDays
     val quietOn by Cfg.quietOn
@@ -86,9 +138,33 @@ fun SettingsScreen(
     val qe by Cfg.quietEnd
     val arOn by Cfg.autoReplyOn
     val arText by Cfg.autoReplyText
+    val hideLock by Cfg.hideLock
+    val groupN by Cfg.groupNotifs
+    val quietPromo by Cfg.quietPromo
+    val spamRules by Cfg.spamRules
+    val swStart by Cfg.swipeStart
+    val swEnd by Cfg.swipeEnd
+    val autoArch by Cfg.autoArchiveMonths
+    val secure by Cfg.secureScreen
+    val autoSim by Cfg.autoSimByOp
+    val sig1 by Cfg.sig1
+    val sig2 by Cfg.sig2
+    val showBal by Cfg.showBalances
+    val budget by Cfg.budget
+    val abOn by Cfg.autoBackupOn
+    val abUri by Cfg.autoBackupUri
+    val abLast by Cfg.lastBackup
+    val folders by Flags.folders
+    val proActive by Pro.active
     val nBg = Palettes.backgrounds.size
     val nAc = Palettes.accents.size
     var notifFor by remember { mutableStateOf<Cat?>(null) }
+    var pinMode by remember { mutableStateOf<String?>(null) }
+    var pinCur by remember { mutableStateOf("") }
+    var pinNew by remember { mutableStateOf("") }
+    var pinNew2 by remember { mutableStateOf("") }
+    var newFolder by remember { mutableStateOf("") }
+    var budgetText by remember(budget) { mutableStateOf(if (budget > 0) budget.toString() else "") }
 
     val exportL = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -119,6 +195,34 @@ fun SettingsScreen(
             }
         }
     }
+    val csvAllL = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val n = withContext(Dispatchers.IO) {
+                    try { Csv.exportMsgs(ctx, uri, Sms.loadAll(ctx)) } catch (e: Exception) { -1 }
+                }
+                toast(ctx, if (n >= 0) T("$n پیام ذخیره شد", "$n messages exported") else T("خروجی ناموفق بود", "Export failed"))
+            }
+        }
+    }
+    val treeL = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                ctx.contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            } catch (e: Exception) { }
+            Cfg.setAutoBackupUri(uri.toString())
+            Cfg.setAutoBackupOn(true)
+        }
+    }
+
+    fun canLock(): Boolean =
+        BiometricManager.from(ctx).canAuthenticate(lockAuthenticators()) == BiometricManager.BIOMETRIC_SUCCESS || Security.hasPin.value
 
     Column(Modifier.fillMaxSize()) {
         AppBar(t, T("تنظیمات", "Settings"), onBack = onBack)
@@ -126,6 +230,22 @@ fun SettingsScreen(
             Modifier.fillMaxSize().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            Row(
+                Modifier.fillMaxWidth().glass(t, 18.dp).clickable { onPage(Page.PRO) }.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Ic(R.drawable.ic_star, t.accent, 24.dp)
+                Spacer(Modifier.size(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("PSMS Pro", color = t.text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(
+                        if (proActive) T("فعال است", "Active") else T("امکانات حرفه‌ای را باز کنید", "Unlock professional features"),
+                        color = if (proActive) t.accent else t.subText, fontSize = 12.sp
+                    )
+                }
+                Ic(R.drawable.ic_chevron_down, t.subText, 20.dp, Modifier.padding(0.dp))
+            }
+
             Section(t, T("زبان", "Language"), R.drawable.ic_chat) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Chip(t, "فارسی", Lang.code.value == "fa") { Cfg.setLang("fa") }
@@ -207,6 +327,17 @@ fun SettingsScreen(
                 LabeledSlider(t, T("اندازه متن پیام‌ها", "Message text size"), raw.msgScale, 0.8f..1.6f) { onChange(raw.copy(msgScale = it)) }
             }
 
+            Section(t, T("عمل‌های کشیدن انگشت روی لیست", "List swipe actions"), R.drawable.ic_archive) {
+                Text(T("کشیدن به سمت شروع", "Swipe toward start"), color = t.subText, fontSize = 13.sp)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (a in SWIPE_OPTIONS) Chip(t, swipeLabel(a), swStart == a, swipeIcon(a)) { Cfg.setSwipeStart(a) }
+                }
+                Text(T("کشیدن به سمت پایان", "Swipe toward end"), color = t.subText, fontSize = 13.sp)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (a in SWIPE_OPTIONS) Chip(t, swipeLabel(a), swEnd == a, swipeIcon(a)) { Cfg.setSwipeEnd(a) }
+                }
+            }
+
             Section(t, T("متن و تاریخ", "Text & date"), R.drawable.ic_edit) {
                 LabeledSlider(t, T("اندازه متن برنامه", "App text size"), raw.textScale, 0.8f..1.6f) { onChange(raw.copy(textScale = it)) }
                 Text(T("فونت", "Font"), color = t.subText, fontSize = 13.sp)
@@ -216,16 +347,42 @@ fun SettingsScreen(
                 SwitchRow(t, T("تاریخ شمسی و ارقام فارسی", "Jalali dates & Persian digits"), raw.jalali) { onChange(raw.copy(jalali = it)) }
             }
 
+            Section(t, T("صفحه اصلی", "Home screen"), R.drawable.ic_chat) {
+                Text(T("بایگانی خودکار مکالمه‌های قدیمی (ماه)", "Auto-archive inactive conversations (months)"), color = t.subText, fontSize = 13.sp)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (m in listOf(0, 3, 6, 12)) {
+                        Chip(t, if (m == 0) T("خاموش", "Off") else Fmt.digits("$m", raw.jalali), autoArch == m) { Cfg.setAutoArchive(m) }
+                    }
+                }
+                if (Pro.allowed("balances")) {
+                    SwitchRow(t, T("نمایش موجودی حساب‌ها بالای لیست", "Show account balances on top"), showBal) { Cfg.setShowBalances(it) }
+                } else {
+                    LockedBtn(t, T("نمایش موجودی حساب‌ها", "Account balance cards")) { onPage(Page.PRO) }
+                }
+            }
+
             Section(t, T("اعلان‌ها", "Notifications"), R.drawable.ic_bolt) {
+                SwitchRow(t, T("گروه‌بندی اعلان‌ها بر اساس دسته", "Group notifications by category"), groupN) { Cfg.setGroupNotifs(it) }
+                SwitchRow(t, T("اعلان بی‌صدا برای تبلیغاتی، ناشناس و خدمات", "Silent notifications for promo, unknown & services"), quietPromo) { Cfg.setQuietPromo(it) }
+                SwitchRow(t, T("پنهان کردن متن پیام در قفل صفحه", "Hide message text on lock screen"), hideLock) { Cfg.setHideLock(it) }
                 Text(T("صدا، لرزش و رنگ هر دسته", "Sound, vibration and color per category"), color = t.subText, fontSize = 13.sp)
                 for (c in listOf(Cat.CONTACTS, Cat.BANK, Cat.OTP, Cat.GOV, Cat.PROMO, Cat.UNKNOWN)) {
-                    ActionBtn(t, c.label, c.icon) { notifFor = c }
+                    ActionBtn(t, c.label, c.icon) { if (Pro.gate(ctx, "notif_cat")) notifFor = c }
                 }
                 SwitchRow(t, T("ساعت سکوت", "Quiet hours"), quietOn) { Cfg.setQuietOn(it) }
                 if (quietOn) {
                     LabeledSlider(t, T("شروع: ", "From: ") + Fmt.digits("$qs:00", raw.jalali), qs.toFloat(), 0f..23f) { Cfg.setQuietStart(it.roundToInt()) }
                     LabeledSlider(t, T("پایان: ", "To: ") + Fmt.digits("$qe:00", raw.jalali), qe.toFloat(), 0f..23f) { Cfg.setQuietEnd(it.roundToInt()) }
                 }
+            }
+
+            Section(t, T("قوانین اسپم", "Spam rules"), R.drawable.ic_block) {
+                Text(
+                    T("پیام‌هایی که شماره یا متنشان شامل این کلمه‌ها باشد (با ویرگول جدا کنید) خودکار به اسپم می‌روند و اعلان نمی‌دهند.",
+                        "Messages whose sender or text contains these words (comma-separated) go to Spam silently."),
+                    color = t.subText, fontSize = 13.sp
+                )
+                GlassField(t, spamRules, { Cfg.setSpamRules(it) }, T("کلمه یا شماره…", "Words or numbers…"), Modifier.fillMaxWidth(), singleLine = false)
             }
 
             Section(t, T("ارسال", "Sending"), R.drawable.ic_send) {
@@ -235,11 +392,36 @@ fun SettingsScreen(
                         Chip(t, if (s == 0) T("خاموش", "Off") else Fmt.digits("$s", raw.jalali) + T(" ثانیه", " s"), undo == s) { Cfg.setUndo(s) }
                     }
                 }
+                SwitchRow(t, T("انتخاب خودکار سیم‌کارت بر اساس اپراتور گیرنده", "Auto-pick SIM by recipient's operator"), autoSim) { Cfg.setAutoSim(it) }
+                Text(T("امضای پایان پیام", "Message signature"), color = t.subText, fontSize = 13.sp)
+                GlassField(t, sig1, { Cfg.setSig1(it) }, T("امضای سیم ۱ (اختیاری)", "SIM 1 signature (optional)"), Modifier.fillMaxWidth())
+                GlassField(t, sig2, { Cfg.setSig2(it) }, T("امضای سیم ۲ (اختیاری)", "SIM 2 signature (optional)"), Modifier.fillMaxWidth())
                 SwitchRow(t, T("پاسخ خودکار به مخاطبین", "Auto-reply to contacts"), arOn) { Cfg.setAutoReplyOn(it) }
                 if (arOn) {
                     GlassField(t, arText, { Cfg.setAutoReplyText(it) }, T("متن پاسخ خودکار", "Auto-reply text"), Modifier.fillMaxWidth(), singleLine = false)
                 }
-                ActionBtn(t, T("پیام‌های آماده", "Templates")) { onPage(Page.TEMPLATES) }
+                ActionBtn(t, T("پیام‌های آماده", "Templates"), R.drawable.ic_bolt) { onPage(Page.TEMPLATES) }
+            }
+
+            Section(t, T("پوشه‌های دلخواه", "Custom folders"), R.drawable.ic_folder) {
+                if (!Pro.allowed("folders")) {
+                    LockedBtn(t, T("پوشه‌های دلخواه", "Custom folders")) { onPage(Page.PRO) }
+                } else {
+                    for (f in folders) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Ic(R.drawable.ic_folder, t.accent, 18.dp)
+                            Spacer(Modifier.size(8.dp))
+                            Text(f, color = t.text, modifier = Modifier.weight(1f))
+                            Box(Modifier.size(36.dp).clip(CircleShape).clickable { Flags.removeFolder(f) }, contentAlignment = Alignment.Center) {
+                                Ic(R.drawable.ic_close, t.subText, 16.dp)
+                            }
+                        }
+                    }
+                    GlassField(t, newFolder, { newFolder = it }, T("نام پوشه جدید", "New folder name"), Modifier.fillMaxWidth())
+                    ActionBtn(t, T("افزودن پوشه", "Add folder"), R.drawable.ic_plus) {
+                        if (newFolder.isNotBlank()) { Flags.addFolder(newFolder); newFolder = "" }
+                    }
+                }
             }
 
             Section(t, T("پاک‌سازی خودکار", "Auto cleanup"), R.drawable.ic_trash) {
@@ -252,29 +434,79 @@ fun SettingsScreen(
             }
 
             Section(t, T("امنیت", "Security"), R.drawable.ic_lock) {
-                SwitchRow(t, T("قفل برنامه (اثر انگشت یا قفل گوشی)", "App lock (fingerprint or phone lock)"), lockOn) { on ->
+                SwitchRow(t, T("قفل برنامه", "App lock"), lockOn) { on ->
                     if (on) {
-                        val ok = BiometricManager.from(ctx).canAuthenticate(lockAuthenticators()) == BiometricManager.BIOMETRIC_SUCCESS
-                        if (ok) Security.setEnabled(true)
-                        else toast(ctx, T("ابتدا در تنظیمات گوشی اثر انگشت یا قفل صفحه تعریف کنید", "Set up a fingerprint or screen lock in phone settings first"))
+                        if (canLock()) Security.setEnabled(true)
+                        else toast(ctx, T("اول رمز عددی بسازید یا اثر انگشت / قفل صفحه گوشی را فعال کنید", "Set a PIN first, or set up a fingerprint / screen lock on the phone"))
                     } else {
                         Security.setEnabled(false)
                     }
                 }
+                Text(T("قفل‌شدن بعد از خروج از برنامه", "Lock after leaving the app"), color = t.subText, fontSize = 13.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Chip(t, T("فوری", "Immediately"), timeout == 0) { Security.setTimeout(0) }
+                    Chip(t, T("۱ دقیقه", "1 min"), timeout == 60) { Security.setTimeout(60) }
+                    Chip(t, T("۵ دقیقه", "5 min"), timeout == 300) { Security.setTimeout(300) }
+                }
+                if (!hasPin) {
+                    ActionBtn(t, T("ساخت رمز عددی (PIN)", "Set a PIN"), R.drawable.ic_key) { pinMode = "set"; pinCur = ""; pinNew = ""; pinNew2 = "" }
+                } else {
+                    ActionBtn(t, T("تغییر رمز عددی", "Change PIN"), R.drawable.ic_key) { pinMode = "change"; pinCur = ""; pinNew = ""; pinNew2 = "" }
+                    ActionBtn(t, T("حذف رمز عددی", "Remove PIN"), R.drawable.ic_trash) { pinMode = "remove"; pinCur = ""; pinNew = ""; pinNew2 = "" }
+                }
+                SwitchRow(t, T("پنهان کردن برنامه در لیست برنامه‌های اخیر و ممانعت از اسکرین‌شات", "Hide app in recents & block screenshots"), secure) { Cfg.setSecureScreen(it) }
             }
 
             Section(t, T("دسته‌بندی", "Categories"), R.drawable.ic_label) {
-                ActionBtn(t, T("ویرایش کلمات دسته‌بندی", "Edit category keywords")) { onPage(Page.RULES) }
+                ActionBtn(t, T("ویرایش کلمات دسته‌بندی", "Edit category keywords"), R.drawable.ic_edit) { onPage(Page.RULES) }
+            }
+
+            Section(t, T("بودجه و بانک", "Bank & budget"), R.drawable.ic_bank) {
+                if (Pro.allowed("budget")) {
+                    Text(T("اگر هزینه ماه از این مبلغ بیشتر شود هشدار می‌گیرید (۰ = خاموش)", "Get an alert when this month's spending passes this amount (0 = off)"), color = t.subText, fontSize = 13.sp)
+                    GlassField(
+                        t, budgetText,
+                        { v ->
+                            val d = Fmt.norm(v).filter { it.isDigit() }.take(13)
+                            budgetText = d
+                            Cfg.setBudget(d.toLongOrNull() ?: 0L)
+                        },
+                        T("بودجه ماهانه (ریال)", "Monthly budget"), Modifier.fillMaxWidth()
+                    )
+                } else {
+                    LockedBtn(t, T("بودجه ماهانه و هشدار", "Monthly budget & alert")) { onPage(Page.PRO) }
+                }
+                ActionBtn(t, T("خلاصه پیام‌های بانکی", "Bank summary"), R.drawable.ic_chart) { onPage(Page.BANK) }
             }
 
             Section(t, T("پشتیبان‌گیری", "Backup"), R.drawable.ic_archive) {
-                ActionBtn(t, T("ذخیره‌ی همه‌ی پیام‌ها در فایل", "Save all messages to a file")) { exportL.launch("psms-backup.json") }
-                ActionBtn(t, T("بازیابی پیام‌ها از فایل", "Restore messages from a file")) { importL.launch(arrayOf("application/json", "*/*")) }
+                ActionBtn(t, T("ذخیره‌ی همه‌ی پیام‌ها در فایل", "Save all messages to a file"), R.drawable.ic_download) { exportL.launch("psms-backup.json") }
+                ActionBtn(t, T("بازیابی پیام‌ها از فایل", "Restore messages from a file"), R.drawable.ic_archive) { importL.launch(arrayOf("application/json", "*/*")) }
+                ActionBtn(t, T("خروجی CSV (اکسل) از همه پیام‌ها", "Export all messages as CSV (Excel)"), R.drawable.ic_chart) {
+                    if (Pro.gate(ctx, "csv")) csvAllL.launch("psms-messages.csv")
+                }
+                if (Pro.allowed("autobackup")) {
+                    SwitchRow(t, T("پشتیبان‌گیری خودکار روزانه", "Daily automatic backup"), abOn) { on ->
+                        if (on && abUri.isEmpty()) treeL.launch(null) else Cfg.setAutoBackupOn(on)
+                    }
+                    if (abOn || abUri.isNotEmpty()) {
+                        ActionBtn(t, T("انتخاب پوشه‌ی پشتیبان", "Choose backup folder"), R.drawable.ic_folder) { treeL.launch(null) }
+                        Text(
+                            T("هر روز یک بار هنگام باز شدن برنامه ذخیره می‌شود. آخرین: ", "Saved once a day when the app opens. Last: ") +
+                                (if (abLast > 0) Fmt.time(abLast, raw, withDate = true) else "—"),
+                            color = t.subText, fontSize = 11.sp
+                        )
+                    }
+                } else {
+                    LockedBtn(t, T("پشتیبان‌گیری خودکار", "Automatic backup")) { onPage(Page.PRO) }
+                }
             }
 
             if (!isDefault) {
-                ActionBtn(t, T("تنظیم به‌عنوان برنامه پیش‌فرض پیامک", "Set as default SMS app")) { onDefault() }
+                ActionBtn(t, T("تنظیم به‌عنوان برنامه پیش‌فرض پیامک", "Set as default SMS app"), R.drawable.ic_chat) { onDefault() }
             }
+
+            AboutCard(t)
             Spacer(Modifier.size(16.dp))
         }
     }
@@ -282,5 +514,52 @@ fun SettingsScreen(
     val nf = notifFor
     if (nf != null) {
         NotifEditor(t, "c:${nf.name}", nf.label) { notifFor = null }
+    }
+
+    val pm = pinMode
+    if (pm != null) {
+        AlertDialog(
+            onDismissRequest = { pinMode = null },
+            title = {
+                Text(
+                    when (pm) {
+                        "set" -> T("ساخت رمز عددی", "Set a PIN")
+                        "change" -> T("تغییر رمز عددی", "Change PIN")
+                        else -> T("حذف رمز عددی", "Remove PIN")
+                    }
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (pm != "set") GlassField(t, pinCur, { pinCur = it.filter { c -> c.isDigit() }.take(8) }, T("رمز فعلی", "Current PIN"), Modifier.fillMaxWidth())
+                    if (pm != "remove") {
+                        GlassField(t, pinNew, { pinNew = it.filter { c -> c.isDigit() }.take(8) }, T("رمز جدید (۴ تا ۸ رقم)", "New PIN (4–8 digits)"), Modifier.fillMaxWidth())
+                        GlassField(t, pinNew2, { pinNew2 = it.filter { c -> c.isDigit() }.take(8) }, T("تکرار رمز جدید", "Repeat new PIN"), Modifier.fillMaxWidth())
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    var ok = true
+                    if (pm != "set" && !Security.checkPin(pinCur)) {
+                        toast(ctx, T("رمز فعلی اشتباه است", "Current PIN is wrong")); ok = false
+                    }
+                    if (ok && pm != "remove") {
+                        if (pinNew.length < 4) { toast(ctx, T("رمز باید حداقل ۴ رقم باشد", "PIN must be at least 4 digits")); ok = false }
+                        else if (pinNew != pinNew2) { toast(ctx, T("تکرار رمز یکسان نیست", "PINs do not match")); ok = false }
+                    }
+                    if (ok) {
+                        if (pm == "remove") {
+                            Security.clearPin()
+                            if (Security.enabled.value && !canLock()) Security.setEnabled(false)
+                        } else {
+                            Security.setPin(pinNew)
+                        }
+                        pinMode = null
+                    }
+                }) { Text(T("تأیید", "OK")) }
+            },
+            dismissButton = { TextButton(onClick = { pinMode = null }) { Text(T("انصراف", "Cancel")) } }
+        )
     }
 }

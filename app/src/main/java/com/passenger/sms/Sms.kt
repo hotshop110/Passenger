@@ -25,7 +25,24 @@ import kotlinx.coroutines.withContext
 object Store {
     val convs = mutableStateOf<List<Conv>>(emptyList())
     val pendingOpen = mutableStateOf<String?>(null)
+    val pendingPage = mutableStateOf<String?>(null)
+    val sharedText = mutableStateOf<String?>(null)
+    val pinCallback = mutableStateOf<(() -> Unit)?>(null)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    private fun autoArchiveOld(list: List<Conv>) {
+        val months = Cfg.autoArchiveMonths.value
+        if (months <= 0) return
+        val cutoff = System.currentTimeMillis() - months * 30L * 86400000L
+        val done = Flags.autoArchived.value
+        val keys = list.filter {
+            it.last.date < cutoff && it.key !in done && it.key !in Flags.pinned.value
+        }.map { it.key }
+        if (keys.isNotEmpty()) {
+            Flags.markAutoArchived(keys)
+            Flags.setArchived(keys, true)
+        }
+    }
 
     fun refresh(ctx: Context) {
         val app = ctx.applicationContext
@@ -35,10 +52,13 @@ object Store {
             val list = withContext(Dispatchers.IO) {
                 try {
                     Sms.autoClean(app)
+                    AutoBackup.runIfDue(app)
+                    Budget.check(app)
                     Sms.loadConvs(app)
                 } catch (e: Exception) { emptyList() }
             }
             convs.value = list
+            autoArchiveOld(list)
             try { UnreadWidget.updateAll(app) } catch (e: Exception) { }
         }
     }
@@ -159,7 +179,8 @@ object Sms {
                     name = info.first ?: Flags.aliases.value[k],
                     last = last, count = list.size, unread = unread,
                     cat = Classifier.classify(last.address, last.body, info.first != null, Flags.overrideFor(k)),
-                    subId = last.subId, photo = info.second
+                    subId = last.subId, photo = info.second,
+                    spam = Spam.matches(last.address, last.body)
                 )
             )
         }
@@ -171,6 +192,13 @@ object Sms {
         val out = ArrayList<Msg>()
         q(ctx, Telephony.Sms.CONTENT_URI, "address LIKE ?", arrayOf(likeArg(address)), "date DESC")
             ?.use { c -> while (c.moveToNext()) out.add(read(c)) }
+        return out
+    }
+
+    fun loadAll(ctx: Context): List<Msg> {
+        if (!granted(ctx, Manifest.permission.READ_SMS)) return emptyList()
+        val out = ArrayList<Msg>()
+        q(ctx, Telephony.Sms.CONTENT_URI, null, null, "date DESC")?.use { c -> while (c.moveToNext()) out.add(read(c)) }
         return out
     }
 
@@ -206,6 +234,38 @@ object Sms {
         } catch (e: Exception) { -1 }
     }
 
+    fun searchContacts(ctx: Context, q: String): List<Pair<String, String>> {
+        if (q.length < 2 || !granted(ctx, Manifest.permission.READ_CONTACTS)) return emptyList()
+        val out = ArrayList<Pair<String, String>>()
+        try {
+            ctx.contentResolver.query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER),
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " LIKE ? OR " + ContactsContract.CommonDataKinds.Phone.NUMBER + " LIKE ?",
+                arrayOf("%$q%", "%$q%"),
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
+            )?.use { c ->
+                while (c.moveToNext() && out.size < 8) {
+                    val n = c.getString(0) ?: continue
+                    val num = c.getString(1) ?: continue
+                    if (out.none { it.second.filter { ch -> ch.isDigit() } == num.filter { ch -> ch.isDigit() } }) out.add(Pair(n, num))
+                }
+            }
+        } catch (e: Exception) { }
+        return out
+    }
+
+    fun markUnread(ctx: Context, address: String): Boolean {
+        if (!isDefault(ctx)) return false
+        val last = loadThread(ctx, address).firstOrNull { it.type == 1 } ?: return false
+        return try {
+            ctx.contentResolver.update(
+                Telephony.Sms.CONTENT_URI, ContentValues().apply { put("read", 0) },
+                "_id = ?", arrayOf(last.id.toString())
+            ) > 0
+        } catch (e: Exception) { false }
+    }
+
     // ---------- writing ----------
 
     fun markRead(ctx: Context, address: String) {
@@ -219,9 +279,9 @@ object Sms {
         } catch (e: Exception) { }
     }
 
-    fun deleteMessages(ctx: Context, ids: Collection<Long>): Int {
+    fun deleteMessages(ctx: Context, ids: Collection<Long>, toTrash: Boolean = true): Int {
         if (ids.isEmpty()) return 0
-        Trash.add(ctx, loadByIds(ctx, ids))
+        if (toTrash) Trash.add(ctx, loadByIds(ctx, ids))
         var n = 0
         for (chunk in ids.toList().chunked(400)) {
             try {

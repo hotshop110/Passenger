@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">PSMS</string>
+    <string name="sc_new">پیام جدید</string>
+    <string name="sc_search">جستجو</string>
+    <string name="sc_private">پوشه خصوصی</string>
+    <string name="tile_new">پیام جدید</string>
+</resources>

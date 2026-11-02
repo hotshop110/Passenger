@@ -36,7 +36,8 @@ data class Conv(
     val unread: Int,
     val cat: Cat,
     val subId: Int,
-    val photo: ImageBitmap?
+    val photo: ImageBitmap?,
+    val spam: Boolean = false
 )
 
 object Classifier {

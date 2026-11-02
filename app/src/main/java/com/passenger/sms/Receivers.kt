@@ -43,7 +43,7 @@ class SmsReceiver : BroadcastReceiver() {
             ctx.contentResolver.insert(Telephony.Sms.Inbox.CONTENT_URI, v)
         } catch (e: Exception) { }
         val key = Sms.keyOf(addr)
-        if (key !in Flags.blocked.value) Notifier.show(ctx, addr, body, sub)
+        if (key !in Flags.blocked.value && !Spam.matches(addr, body)) Notifier.show(ctx, addr, body, sub)
         maybeAutoReply(ctx, addr, key, sub)
         Store.refresh(ctx)
     }
@@ -178,13 +178,18 @@ object Notifier {
         val cat = Classifier.classify(addr, body, info.first != null, Flags.overrideFor(key))
         val pref = NotifPrefs.resolve(key, cat)
         if (pref.mute) return
+        val vip = key in Flags.vip.value
         val code = if (cat == Cat.OTP && !isPrivate) Classifier.extractCode(body) else null
-        val b = NotificationCompat.Builder(ctx, channel(ctx, nm, pref))
+        val quietPromo = Cfg.quietPromo.value && (cat == Cat.PROMO || cat == Cat.UNKNOWN || cat == Cat.GOV)
+        val silent = (Cfg.quietNow() && !vip) || quietPromo
+        val chan = channel(ctx, nm, pref)
+        val b = NotificationCompat.Builder(ctx, chan)
             .setSmallIcon(R.drawable.ic_stat_psms)
             .setContentIntent(openIntent(ctx, addr))
             .setAutoCancel(true)
-            .setSilent(Cfg.quietNow())
+            .setSilent(silent)
         b.setColor(if (pref.color != 0) pref.color else 0xFF7CB518.toInt())
+        val hide = isPrivate || Cfg.hideLock.value
         if (isPrivate) {
             b.setContentTitle("PSMS").setContentText(T("پیام جدید", "New message"))
         } else {
@@ -202,7 +207,51 @@ object Notifier {
                 b.addAction(0, T("کپی کد", "Copy code"), actionPi(ctx, ACT_COPY, addr, nid, sub, code, false))
             }
         }
-        nm.notify(nid, b.build())
+        if (hide && !isPrivate) {
+            b.setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            b.setPublicVersion(
+                NotificationCompat.Builder(ctx, chan)
+                    .setSmallIcon(R.drawable.ic_stat_psms)
+                    .setContentTitle("PSMS")
+                    .setContentText(T("پیام جدید", "New message"))
+                    .build()
+            )
+        }
+        if (Cfg.groupNotifs.value) {
+            val g = "psms_" + cat.name
+            b.setGroup(g)
+            nm.notify(nid, b.build())
+            val sum = NotificationCompat.Builder(ctx, chan)
+                .setSmallIcon(R.drawable.ic_stat_psms)
+                .setContentTitle(cat.label)
+                .setGroup(g)
+                .setGroupSummary(true)
+                .setAutoCancel(true)
+                .setSilent(true)
+                .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
+                .setColor(0xFF7CB518.toInt())
+                .build()
+            nm.notify(("sum_" + cat.name).hashCode(), sum)
+        } else {
+            nm.notify(nid, b.build())
+        }
+    }
+
+    fun budget(ctx: Context, spent: Long, budget: Long) {
+        if (!canPost(ctx)) return
+        val nm = ctx.getSystemService(NotificationManager::class.java)
+        val msg = T(
+            "هزینه این ماه از بودجه (" + Fmt.digits(String.format("%,d", budget), true) + ") بیشتر شد: " + Fmt.digits(String.format("%,d", spent), true),
+            "This month's spending passed your budget (" + String.format("%,d", budget) + "): " + String.format("%,d", spent)
+        )
+        val b = NotificationCompat.Builder(ctx, channel(ctx, nm, NotifPref()))
+            .setSmallIcon(R.drawable.ic_stat_psms)
+            .setContentTitle(T("هشدار بودجه", "Budget alert"))
+            .setContentText(msg)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(msg))
+            .setColor(0xFFE53935.toInt())
+            .setAutoCancel(true)
+        nm.notify("budget".hashCode(), b.build())
     }
 
     fun reminder(ctx: Context, item: SchedItem) {
@@ -245,6 +294,31 @@ class UnreadWidget : AppWidgetProvider() {
             val m = AppWidgetManager.getInstance(ctx)
             val ids = m.getAppWidgetIds(ComponentName(ctx, UnreadWidget::class.java))
             for (id in ids) m.updateAppWidget(id, views(ctx))
+        }
+    }
+}
+
+
+class NewMessageTile : android.service.quicksettings.TileService() {
+    override fun onStartListening() {
+        super.onStartListening()
+        qsTile?.let {
+            it.state = android.service.quicksettings.Tile.STATE_INACTIVE
+            it.updateTile()
+        }
+    }
+
+    override fun onClick() {
+        super.onClick()
+        val i = Intent(this, MainActivity::class.java)
+        i.action = "com.passenger.sms.NEW"
+        i.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        if (Build.VERSION.SDK_INT >= 34) {
+            val pi = PendingIntent.getActivity(this, 0, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            startActivityAndCollapse(pi)
+        } else {
+            @Suppress("DEPRECATION")
+            startActivityAndCollapse(i)
         }
     }
 }

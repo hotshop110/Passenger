@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
@@ -242,20 +243,67 @@ fun Divider(t: GlassTheme) {
     Box(Modifier.fillMaxWidth().height(0.5.dp).background(t.divider))
 }
 
+val SWIPE_OPTIONS = listOf("pin", "archive", "delete", "read", "none")
+
+fun swipeLabel(a: String): String = when (a) {
+    "pin" -> T("پین", "Pin")
+    "archive" -> T("بایگانی", "Archive")
+    "delete" -> T("حذف", "Delete")
+    "read" -> T("خوانده‌شده", "Mark read")
+    else -> T("هیچ", "None")
+}
+
+fun swipeIcon(a: String): Int = when (a) {
+    "pin" -> R.drawable.ic_pin
+    "archive" -> R.drawable.ic_archive
+    "delete" -> R.drawable.ic_trash
+    "read" -> R.drawable.ic_check_all
+    else -> R.drawable.ic_close
+}
+
 @Composable
-fun LockScreen(t: GlassTheme, onUnlock: () -> Unit) {
+fun LockScreen(t: GlassTheme, onBiometric: () -> Unit, onPin: (String) -> Boolean) {
+    val hasPin by Security.hasPin
+    var pin by remember { mutableStateOf("") }
+    var wrong by remember { mutableStateOf(false) }
     Column(
         Modifier.fillMaxSize().statusBarsPadding(),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Ic(R.drawable.ic_lock, t.accent, 56.dp)
+        Image(
+            painter = painterResource(R.drawable.logo_psms), contentDescription = null,
+            modifier = Modifier.size(96.dp).clip(RoundedCornerShape(24.dp))
+        )
         Spacer(Modifier.size(12.dp))
         Text("PSMS", color = t.text, fontSize = 26.sp, fontWeight = FontWeight.Bold)
         Text(T("برنامه قفل است", "App is locked"), color = t.subText, fontSize = 14.sp)
         Spacer(Modifier.size(24.dp))
+        if (hasPin) {
+            GlassField(
+                t, pin, { v -> pin = v.filter { it.isDigit() }.take(8); wrong = false },
+                T("رمز عددی", "PIN"), Modifier.padding(horizontal = 64.dp).fillMaxWidth()
+            )
+            if (wrong) {
+                Text(T("رمز اشتباه است", "Wrong PIN"), color = Color(0xFFE53935), fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+            }
+            Spacer(Modifier.size(12.dp))
+            Box(
+                Modifier.glass(t, 22.dp).clickable {
+                    if (!onPin(pin)) { wrong = true; pin = "" }
+                }.padding(horizontal = 32.dp, vertical = 12.dp)
+            ) { Text(T("ورود", "Unlock"), color = t.accent, fontWeight = FontWeight.Bold) }
+            Spacer(Modifier.size(12.dp))
+        }
         Box(
-            Modifier.glass(t, 22.dp).clickable { onUnlock() }.padding(horizontal = 32.dp, vertical = 14.dp)
-        ) { Text(T("باز کردن", "Unlock"), color = t.accent, fontWeight = FontWeight.Bold) }
+            Modifier.glass(t, 22.dp).clickable { onBiometric() }.padding(horizontal = 32.dp, vertical = 12.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Ic(R.drawable.ic_lock, t.accent, 18.dp)
+                Spacer(Modifier.size(8.dp))
+                Text(T("اثر انگشت / قفل گوشی", "Fingerprint / phone lock"), color = t.accent, fontWeight = FontWeight.Bold)
+            }
+        }
     }
 }

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="new_message"
+        android:enabled="true"
+        android:icon="@drawable/ic_edit"
+        android:shortcutShortLabel="@string/sc_new"
+        android:shortcutLongLabel="@string/sc_new">
+        <intent
+            android:action="com.passenger.sms.NEW"
+            android:targetClass="com.passenger.sms.MainActivity"
+            android:targetPackage="com.passenger.sms" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="search"
+        android:enabled="true"
+        android:icon="@drawable/ic_search"
+        android:shortcutShortLabel="@string/sc_search"
+        android:shortcutLongLabel="@string/sc_search">
+        <intent
+            android:action="com.passenger.sms.SEARCH"
+            android:targetClass="com.passenger.sms.MainActivity"
+            android:targetPackage="com.passenger.sms" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="private_box"
+        android:enabled="true"
+        android:icon="@drawable/ic_lock"
+        android:shortcutShortLabel="@string/sc_private"
+        android:shortcutLongLabel="@string/sc_private">
+        <intent
+            android:action="com.passenger.sms.PRIVATE"
+            android:targetClass="com.passenger.sms.MainActivity"
+            android:targetPackage="com.passenger.sms" />
+    </shortcut>
+</shortcuts>

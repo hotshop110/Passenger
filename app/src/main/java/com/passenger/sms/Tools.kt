@@ -976,3 +976,86 @@ fun ProPage(t: GlassTheme, onBack: () -> Unit) {
         }
     }
 }
+
+
+// ---------- new message: contact list ----------
+
+@Composable
+fun ContactsPage(t: GlassTheme, onBack: () -> Unit, onOpen: (String) -> Unit) {
+    val ctx = LocalContext.current
+    var all by remember { mutableStateOf<List<Pair<String, String>>?>(null) }
+    var q by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) { all = withContext(Dispatchers.IO) { Sms.allContacts(ctx) } }
+    val list = all
+    val qd = Fmt.norm(q).filter { it.isDigit() }
+    val shown = remember(list, q) {
+        (list ?: emptyList()).filter {
+            q.isBlank() || it.first.contains(q, true) ||
+                (qd.length >= 2 && Fmt.norm(it.second).filter { c -> c.isDigit() }.contains(qd))
+        }
+    }
+    val groups = remember(shown) { shown.groupBy { it.first.trim().take(1).uppercase() } }
+    val looksLikeNumber = Fmt.norm(q).let { n -> n.length >= 3 && n.all { it.isDigit() || it == '+' || it == ' ' } }
+    Column(Modifier.fillMaxSize().imePadding().navigationBarsPadding()) {
+        AppBar(t, T("پیام جدید", "New message"), onBack = onBack)
+        GlassField(
+            t, q, { q = it }, T("جستجوی نام یا شماره…", "Search name or number…"),
+            Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()
+        )
+        LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
+            if (looksLikeNumber) {
+                item {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).glass(t, 14.dp)
+                            .clickable { onOpen(Fmt.norm(q).replace(" ", "")) }.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Ic(R.drawable.ic_send, t.accent, 20.dp)
+                        Spacer(Modifier.size(12.dp))
+                        Text(T("ارسال پیام به ", "Message ") + Fmt.norm(q), color = t.text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    }
+                }
+            }
+            if (list == null) {
+                item { Text(T("در حال بارگذاری مخاطبین…", "Loading contacts…"), color = t.subText, modifier = Modifier.padding(24.dp)) }
+            } else if (list.isEmpty()) {
+                item {
+                    Text(
+                        if (Sms.granted(ctx, android.Manifest.permission.READ_CONTACTS))
+                            T("مخاطبی پیدا نشد", "No contacts found")
+                        else T("برای دیدن مخاطبین، مجوز «مخاطبین» را در تنظیمات گوشی بدهید.", "Allow the Contacts permission in phone settings to see your contacts."),
+                        color = t.subText, modifier = Modifier.fillMaxWidth().padding(24.dp), textAlign = TextAlign.Center
+                    )
+                }
+            } else if (shown.isEmpty() && !looksLikeNumber) {
+                item { Text(T("نتیجه‌ای نیست", "No results"), color = t.subText, modifier = Modifier.fillMaxWidth().padding(24.dp), textAlign = TextAlign.Center) }
+            }
+            for ((letter, people) in groups) {
+                item(key = "h_$letter") {
+                    Text(
+                        letter, color = t.accent, fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 2.dp)
+                    )
+                }
+                items(people, key = { "c_" + it.second + it.first }) { p ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { onOpen(p.second) }.padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            Modifier.size(42.dp).clip(CircleShape).background(t.accent.copy(alpha = if (t.flat) 1f else 0.35f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(initialsOf(p.first), color = if (t.flat) t.onAccent else t.text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        }
+                        Spacer(Modifier.size(12.dp))
+                        Column {
+                            Text(p.first, color = t.text, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(p.second, color = t.subText, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

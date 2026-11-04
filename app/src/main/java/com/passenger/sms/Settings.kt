@@ -84,30 +84,79 @@ fun LockedBtn(t: GlassTheme, label: String, onPro: () -> Unit) {
 }
 
 @Composable
+private fun AboutPoint(t: GlassTheme, icon: Int, title: String, text: String) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        Box(
+            Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(t.accent.copy(alpha = if (t.flat) 0.16f else 0.28f)),
+            contentAlignment = Alignment.Center
+        ) { Ic(icon, t.accent, 20.dp) }
+        Spacer(Modifier.size(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, color = t.text, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text(text, color = t.subText, fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
 fun AboutCard(t: GlassTheme) {
     val ctx = LocalContext.current
     val ver = remember {
         try { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "" } catch (e: Exception) { "" }
     }
     Column(
-        Modifier.fillMaxWidth().glass(t, 20.dp).padding(20.dp),
+        Modifier.fillMaxWidth().glass(t, 22.dp).padding(22.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Image(
             painter = painterResource(R.drawable.logo_psms), contentDescription = null,
-            modifier = Modifier.size(84.dp).clip(RoundedCornerShape(20.dp))
+            modifier = Modifier.size(96.dp).clip(RoundedCornerShape(26.dp))
         )
-        Text("PSMS", color = t.text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-        Text(T("نسخه ", "Version ") + Fmt.digits(ver, t.jalali), color = t.subText, fontSize = 12.sp)
+        Text("PSMS", color = t.text, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        Box(
+            Modifier.clip(CircleShape).background(t.accent.copy(alpha = if (t.flat) 0.16f else 0.3f))
+                .padding(horizontal = 14.dp, vertical = 4.dp)
+        ) {
+            Text(T("نسخه ", "Version ") + Fmt.digits(ver, t.jalali), color = t.accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        }
         Text(
             T("امنیت و سرعت را احساس کنید", "Feel the security and speed"),
-            color = t.accent, fontSize = 16.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center
+            color = t.accent, fontSize = 19.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center
         )
         Text(
-            T("پیام‌رسانی به‌صورت شیک و مدرن؛ سریع، امن و بدون دردسر.", "Sleek, modern messaging — fast, secure and effortless."),
+            T("پیام‌رسانی شیک و مدرن برای کسانی که پیامک را جدی می‌گیرند؛ سریع، امن و بدون دردسر.",
+                "Sleek, modern messaging for people who take SMS seriously — fast, secure and effortless."),
             color = t.subText, fontSize = 13.sp, textAlign = TextAlign.Center
         )
+        Divider(t)
+        AboutPoint(
+            t, R.drawable.ic_shield, T("امنیت", "Security"),
+            T("قفل با اثر انگشت و رمز عددی، پوشه خصوصی، هشدار لینک مشکوک و پیام‌هایی که فقط روی گوشی خودتان می‌مانند.",
+                "Fingerprint & PIN lock, a private box, suspicious-link warnings, and messages that stay on your phone.")
+        )
+        AboutPoint(
+            t, R.drawable.ic_bolt, T("سرعت", "Speed"),
+            T("جستجوی فوری، کپی یک‌لمسی کد تأیید، پاسخ سریع از اعلان، دو سیم‌کارت و میانبرهای هوشمند.",
+                "Instant search, one-tap code copy, quick reply from notifications, dual SIM and smart shortcuts.")
+        )
+        AboutPoint(
+            t, R.drawable.ic_star, T("زیبایی", "Design"),
+            T("۱۰ تم مدرن، رنگ و فونت دلخواه و رابطی ساده که حس سبکی می‌دهد.",
+                "10 modern themes, your own colors and fonts, and a clean interface that feels light.")
+        )
+        AboutPoint(
+            t, R.drawable.ic_chart, T("هوشمندی", "Smart"),
+            T("دسته‌بندی خودکار پیام‌ها، خلاصه بانکی، یادآوری و پیام‌های زمان‌بندی‌شده.",
+                "Automatic message categories, bank summaries, reminders and scheduled messages.")
+        )
+        Divider(t)
+        Text(
+            T("PSMS با این هدف ساخته شده که پیامک‌ها دوباره دلنشین و مرتب شوند. نظر و پیشنهاد شما مستقیم روی نسخه‌های بعدی اثر می‌گذارد.",
+                "PSMS is built to make SMS pleasant and organised again. Your feedback goes straight into the next versions."),
+            color = t.text, fontSize = 13.sp, textAlign = TextAlign.Center
+        )
+        Text(T("ارتباط با ما", "Contact us"), color = t.text, fontWeight = FontWeight.Bold, fontSize = 14.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Chip(t, CONTACT_EMAIL, false, R.drawable.ic_mail) {
                 try {
@@ -116,8 +165,14 @@ fun AboutCard(t: GlassTheme) {
                     ctx.startActivity(i)
                 } catch (e: Exception) { }
             }
+            Box(Modifier.size(40.dp).glass(t, 20.dp).clickable {
+                val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("email", CONTACT_EMAIL))
+                toast(ctx, T("ایمیل کپی شد", "Email copied"))
+            }, contentAlignment = Alignment.Center) { Ic(R.drawable.ic_copy, t.text, 18.dp) }
         }
-        Text(T("برای ارتباط و پیشنهاد، ایمیل بزنید", "Contact us for support and ideas"), color = t.subText, fontSize = 11.sp)
+        Text(T("ساخته‌شده با عشق در ایران", "Made with love in Iran"), color = t.subText, fontSize = 11.sp)
+        Text("© PSMS", color = t.subText, fontSize = 10.sp)
     }
 }
 
@@ -246,14 +301,48 @@ fun SettingsScreen(
                 Ic(R.drawable.ic_chevron_down, t.subText, 20.dp, Modifier.padding(0.dp))
             }
 
-            Section(t, T("زبان", "Language"), R.drawable.ic_chat) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Chip(t, "فارسی", Lang.code.value == "fa") { Cfg.setLang("fa") }
-                    Chip(t, "English", Lang.code.value == "en") { Cfg.setLang("en") }
+            Section(t, T("زبان", "Language"), R.drawable.ic_chat, true) {
+                val cur = Langs.all.firstOrNull { it.code == Lang.code.value }
+                Text(
+                    T("زبان فعلی: ", "Current: ") + (cur?.native ?: "English"),
+                    color = t.accent, fontWeight = FontWeight.Bold, fontSize = 13.sp
+                )
+                Text(
+                    T("زبان پیش‌فرض برنامه همان زبان گوشی شماست. فارسی و انگلیسی کامل ترجمه شده‌اند؛ بقیه‌ی زبان‌ها فعلاً با متن انگلیسی نمایش داده می‌شوند و ترجمه‌شان در نسخه‌های بعدی اضافه می‌شود.",
+                        "The default is your phone's language. Persian and English are fully translated; other languages show English text for now and will be translated in future versions."),
+                    color = t.subText, fontSize = 12.sp
+                )
+                for (l in Langs.all) {
+                    val sel = l.code == Lang.code.value
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable {
+                            Cfg.setLang(l.code)
+                            if (!l.full) toast(ctx, T("این زبان هنوز ترجمه نشده؛ فعلاً متن انگلیسی نمایش داده می‌شود", "This language is not translated yet; English text is shown for now"))
+                        }.padding(vertical = 10.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            l.native, color = t.text, fontSize = 15.sp,
+                            fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1f)
+                        )
+                        if (!l.full) Text(T("به‌زودی", "Soon"), color = t.subText, fontSize = 11.sp)
+                        if (sel) {
+                            Spacer(Modifier.size(8.dp))
+                            Ic(R.drawable.ic_check_all, t.accent, 18.dp)
+                        }
+                    }
+                }
+                ActionBtn(t, T("استفاده از زبان گوشی", "Use phone language"), R.drawable.ic_chat) { Cfg.setLang(Langs.phoneDefault()) }
+                ActionBtn(t, T("کمک به ترجمه (ایمیل)", "Help translate (email)"), R.drawable.ic_mail) {
+                    try {
+                        val i = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$CONTACT_EMAIL"))
+                        i.putExtra(Intent.EXTRA_SUBJECT, "PSMS translation")
+                        ctx.startActivity(i)
+                    } catch (e: Exception) { }
                 }
             }
 
-            Section(t, T("تم", "Theme"), R.drawable.ic_tune) {
+            Section(t, T("تم", "Theme"), R.drawable.ic_tune, true) {
                 val idxs = (0..Palettes.flats.size).toList()
                 for (pair in idxs.chunked(2)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -266,7 +355,7 @@ fun SettingsScreen(
                 SwitchRow(t, T("تیره و روشن خودکار (طبق گوشی)", "Auto dark / light (follow phone)"), raw.auto) { onChange(raw.copy(auto = it)) }
             }
 
-            Section(t, T("رنگ اصلی", "Accent color"), R.drawable.ic_star) {
+            Section(t, T("رنگ اصلی", "Accent color"), R.drawable.ic_star, true) {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Box(
                         Modifier.size(40.dp).clip(CircleShape).background(Color.Gray.copy(alpha = 0.3f))
@@ -294,7 +383,7 @@ fun SettingsScreen(
             }
 
             if (raw.style == 0) {
-                Section(t, T("پس‌زمینه شیشه‌ای", "Glass background"), R.drawable.ic_tune) {
+                Section(t, T("پس‌زمینه شیشه‌ای", "Glass background"), R.drawable.ic_tune, true) {
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Palettes.backgrounds.forEachIndexed { i, p ->
                             Box(
@@ -321,13 +410,13 @@ fun SettingsScreen(
                 }
             }
 
-            Section(t, T("ظاهر لیست و پیام‌ها", "List & bubbles"), R.drawable.ic_chat) {
+            Section(t, T("ظاهر لیست و پیام‌ها", "List & bubbles"), R.drawable.ic_chat, true) {
                 SwitchRow(t, T("لیست فشرده", "Compact list"), raw.dense) { onChange(raw.copy(dense = it)) }
                 LabeledSlider(t, T("گردی حباب پیام", "Bubble roundness"), raw.bubble, 4f..28f) { onChange(raw.copy(bubble = it)) }
                 LabeledSlider(t, T("اندازه متن پیام‌ها", "Message text size"), raw.msgScale, 0.8f..1.6f) { onChange(raw.copy(msgScale = it)) }
             }
 
-            Section(t, T("عمل‌های کشیدن انگشت روی لیست", "List swipe actions"), R.drawable.ic_archive) {
+            Section(t, T("عمل‌های کشیدن انگشت روی لیست", "List swipe actions"), R.drawable.ic_archive, true) {
                 Text(T("کشیدن به سمت شروع", "Swipe toward start"), color = t.subText, fontSize = 13.sp)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     for (a in SWIPE_OPTIONS) Chip(t, swipeLabel(a), swStart == a, swipeIcon(a)) { Cfg.setSwipeStart(a) }
@@ -338,7 +427,7 @@ fun SettingsScreen(
                 }
             }
 
-            Section(t, T("متن و تاریخ", "Text & date"), R.drawable.ic_edit) {
+            Section(t, T("متن و تاریخ", "Text & date"), R.drawable.ic_edit, true) {
                 LabeledSlider(t, T("اندازه متن برنامه", "App text size"), raw.textScale, 0.8f..1.6f) { onChange(raw.copy(textScale = it)) }
                 Text(T("فونت", "Font"), color = t.subText, fontSize = 13.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -347,7 +436,7 @@ fun SettingsScreen(
                 SwitchRow(t, T("تاریخ شمسی و ارقام فارسی", "Jalali dates & Persian digits"), raw.jalali) { onChange(raw.copy(jalali = it)) }
             }
 
-            Section(t, T("صفحه اصلی", "Home screen"), R.drawable.ic_chat) {
+            Section(t, T("صفحه اصلی", "Home screen"), R.drawable.ic_chat, true) {
                 Text(T("بایگانی خودکار مکالمه‌های قدیمی (ماه)", "Auto-archive inactive conversations (months)"), color = t.subText, fontSize = 13.sp)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     for (m in listOf(0, 3, 6, 12)) {
@@ -361,7 +450,7 @@ fun SettingsScreen(
                 }
             }
 
-            Section(t, T("اعلان‌ها", "Notifications"), R.drawable.ic_bolt) {
+            Section(t, T("اعلان‌ها", "Notifications"), R.drawable.ic_bolt, true) {
                 SwitchRow(t, T("گروه‌بندی اعلان‌ها بر اساس دسته", "Group notifications by category"), groupN) { Cfg.setGroupNotifs(it) }
                 SwitchRow(t, T("اعلان بی‌صدا برای تبلیغاتی، ناشناس و خدمات", "Silent notifications for promo, unknown & services"), quietPromo) { Cfg.setQuietPromo(it) }
                 SwitchRow(t, T("پنهان کردن متن پیام در قفل صفحه", "Hide message text on lock screen"), hideLock) { Cfg.setHideLock(it) }
@@ -376,7 +465,7 @@ fun SettingsScreen(
                 }
             }
 
-            Section(t, T("قوانین اسپم", "Spam rules"), R.drawable.ic_block) {
+            Section(t, T("قوانین اسپم", "Spam rules"), R.drawable.ic_block, true) {
                 Text(
                     T("پیام‌هایی که شماره یا متنشان شامل این کلمه‌ها باشد (با ویرگول جدا کنید) خودکار به اسپم می‌روند و اعلان نمی‌دهند.",
                         "Messages whose sender or text contains these words (comma-separated) go to Spam silently."),
@@ -385,7 +474,7 @@ fun SettingsScreen(
                 GlassField(t, spamRules, { Cfg.setSpamRules(it) }, T("کلمه یا شماره…", "Words or numbers…"), Modifier.fillMaxWidth(), singleLine = false)
             }
 
-            Section(t, T("ارسال", "Sending"), R.drawable.ic_send) {
+            Section(t, T("ارسال", "Sending"), R.drawable.ic_send, true) {
                 Text(T("تأخیر قبل از ارسال (امکان لغو)", "Delay before sending (undo)"), color = t.subText, fontSize = 13.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     for (s in listOf(0, 5, 10)) {
@@ -403,7 +492,7 @@ fun SettingsScreen(
                 ActionBtn(t, T("پیام‌های آماده", "Templates"), R.drawable.ic_bolt) { onPage(Page.TEMPLATES) }
             }
 
-            Section(t, T("پوشه‌های دلخواه", "Custom folders"), R.drawable.ic_folder) {
+            Section(t, T("پوشه‌های دلخواه", "Custom folders"), R.drawable.ic_folder, true) {
                 if (!Pro.allowed("folders")) {
                     LockedBtn(t, T("پوشه‌های دلخواه", "Custom folders")) { onPage(Page.PRO) }
                 } else {
@@ -424,7 +513,7 @@ fun SettingsScreen(
                 }
             }
 
-            Section(t, T("پاک‌سازی خودکار", "Auto cleanup"), R.drawable.ic_trash) {
+            Section(t, T("پاک‌سازی خودکار", "Auto cleanup"), R.drawable.ic_trash, true) {
                 Text(T("حذف کدهای تأیید قدیمی‌تر از…", "Delete verification codes older than…"), color = t.subText, fontSize = 13.sp)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     for (d in listOf(0, 1, 3, 7, 30)) {
@@ -433,7 +522,7 @@ fun SettingsScreen(
                 }
             }
 
-            Section(t, T("امنیت", "Security"), R.drawable.ic_lock) {
+            Section(t, T("امنیت", "Security"), R.drawable.ic_lock, true) {
                 SwitchRow(t, T("قفل برنامه", "App lock"), lockOn) { on ->
                     if (on) {
                         if (canLock()) Security.setEnabled(true)
@@ -457,11 +546,11 @@ fun SettingsScreen(
                 SwitchRow(t, T("پنهان کردن برنامه در لیست برنامه‌های اخیر و ممانعت از اسکرین‌شات", "Hide app in recents & block screenshots"), secure) { Cfg.setSecureScreen(it) }
             }
 
-            Section(t, T("دسته‌بندی", "Categories"), R.drawable.ic_label) {
+            Section(t, T("دسته‌بندی", "Categories"), R.drawable.ic_label, true) {
                 ActionBtn(t, T("ویرایش کلمات دسته‌بندی", "Edit category keywords"), R.drawable.ic_edit) { onPage(Page.RULES) }
             }
 
-            Section(t, T("بودجه و بانک", "Bank & budget"), R.drawable.ic_bank) {
+            Section(t, T("بودجه و بانک", "Bank & budget"), R.drawable.ic_bank, true) {
                 if (Pro.allowed("budget")) {
                     Text(T("اگر هزینه ماه از این مبلغ بیشتر شود هشدار می‌گیرید (۰ = خاموش)", "Get an alert when this month's spending passes this amount (0 = off)"), color = t.subText, fontSize = 13.sp)
                     GlassField(
@@ -479,7 +568,7 @@ fun SettingsScreen(
                 ActionBtn(t, T("خلاصه پیام‌های بانکی", "Bank summary"), R.drawable.ic_chart) { onPage(Page.BANK) }
             }
 
-            Section(t, T("پشتیبان‌گیری", "Backup"), R.drawable.ic_archive) {
+            Section(t, T("پشتیبان‌گیری", "Backup"), R.drawable.ic_archive, true) {
                 ActionBtn(t, T("ذخیره‌ی همه‌ی پیام‌ها در فایل", "Save all messages to a file"), R.drawable.ic_download) { exportL.launch("psms-backup.json") }
                 ActionBtn(t, T("بازیابی پیام‌ها از فایل", "Restore messages from a file"), R.drawable.ic_archive) { importL.launch(arrayOf("application/json", "*/*")) }
                 ActionBtn(t, T("خروجی CSV (اکسل) از همه پیام‌ها", "Export all messages as CSV (Excel)"), R.drawable.ic_chart) {

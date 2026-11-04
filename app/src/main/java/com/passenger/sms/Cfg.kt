@@ -7,6 +7,34 @@ import java.util.Calendar
 
 const val CONTACT_EMAIL = "hotshop110@gmail.com"
 
+class LangInfo(val code: String, val native: String, val full: Boolean)
+
+object Langs {
+    val all = listOf(
+        LangInfo("fa", "فارسی", true), LangInfo("en", "English", true),
+        LangInfo("ar", "العربية", false), LangInfo("tr", "Türkçe", false),
+        LangInfo("ku", "Kurdî / کوردی", false), LangInfo("ur", "اردو", false),
+        LangInfo("ps", "پښتو", false), LangInfo("az", "Azərbaycanca", false),
+        LangInfo("ru", "Русский", false), LangInfo("uk", "Українська", false),
+        LangInfo("de", "Deutsch", false), LangInfo("fr", "Français", false),
+        LangInfo("es", "Español", false), LangInfo("pt", "Português", false),
+        LangInfo("it", "Italiano", false), LangInfo("nl", "Nederlands", false),
+        LangInfo("pl", "Polski", false), LangInfo("sv", "Svenska", false),
+        LangInfo("el", "Ελληνικά", false), LangInfo("he", "עברית", false),
+        LangInfo("hy", "Հայերեն", false), LangInfo("ka", "ქართული", false),
+        LangInfo("hi", "हिन्दी", false), LangInfo("bn", "বাংলা", false),
+        LangInfo("id", "Bahasa Indonesia", false), LangInfo("ms", "Bahasa Melayu", false),
+        LangInfo("th", "ไทย", false), LangInfo("vi", "Tiếng Việt", false),
+        LangInfo("zh", "中文", false), LangInfo("ja", "日本語", false), LangInfo("ko", "한국어", false)
+    )
+
+    fun phoneDefault(): String {
+        val raw = java.util.Locale.getDefault().language
+        val code = when (raw) { "iw" -> "he"; "in" -> "id"; else -> raw }
+        return if (all.any { it.code == code }) code else "en"
+    }
+}
+
 object Lang {
     val code = mutableStateOf("fa")
     val isFa: Boolean get() = code.value == "fa"
@@ -65,7 +93,7 @@ object Cfg {
         if (sp != null) return
         val p = ctx.applicationContext.getSharedPreferences("cfg", Context.MODE_PRIVATE)
         sp = p
-        Lang.code.value = p.getString("lang", "fa") ?: "fa"
+        Lang.code.value = p.getString("lang", null) ?: Langs.phoneDefault()
         undoSecs.value = p.getInt("undo", 0)
         otpDays.value = p.getInt("otp_days", 0)
         quietOn.value = p.getBoolean("quiet_on", false)

@@ -234,6 +234,26 @@ object Sms {
         } catch (e: Exception) { -1 }
     }
 
+    fun allContacts(ctx: Context): List<Pair<String, String>> {
+        if (!granted(ctx, Manifest.permission.READ_CONTACTS)) return emptyList()
+        val out = ArrayList<Pair<String, String>>()
+        val seen = HashSet<String>()
+        try {
+            ctx.contentResolver.query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER),
+                null, null, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
+            )?.use { c ->
+                while (c.moveToNext()) {
+                    val n = c.getString(0) ?: continue
+                    val num = c.getString(1) ?: continue
+                    if (seen.add(keyOf(num))) out.add(Pair(n, num))
+                }
+            }
+        } catch (e: Exception) { }
+        return out.sortedBy { it.first.lowercase() }
+    }
+
     fun searchContacts(ctx: Context, q: String): List<Pair<String, String>> {
         if (q.length < 2 || !granted(ctx, Manifest.permission.READ_CONTACTS)) return emptyList()
         val out = ArrayList<Pair<String, String>>()

@@ -184,7 +184,7 @@ fun requestDefaultSms(ctx: Context, launcher: ManagedActivityResultLauncher<Inte
     }
 }
 
-enum class Page { HOME, SETTINGS, RULES, TEMPLATES, SEARCH, STARRED, SCHEDULED, TRASH, BANK, BULK, PRIVATE, STATS, CLEANUP, PRO }
+enum class Page { HOME, SETTINGS, RULES, TEMPLATES, SEARCH, STARRED, SCHEDULED, TRASH, BANK, BULK, PRIVATE, STATS, CLEANUP, PRO, NEWMSG }
 
 @Composable
 fun App() {
@@ -246,7 +246,7 @@ fun App() {
                     (ctx as? MainActivity)?.authenticateThen { page = Page.PRIVATE }
                 }
             }
-            "NEW" -> { open = null; page = Page.HOME }
+            "NEW" -> { open = null; Store.pendingPage.value = null; page = Page.NEWMSG }
         }
     }
     LaunchedEffect(locked) {
@@ -306,6 +306,7 @@ fun App() {
                             Page.STATS -> StatsPage(t, goHome)
                             Page.CLEANUP -> CleanupPage(t, goHome)
                             Page.PRO -> ProPage(t, goHome)
+                            Page.NEWMSG -> ContactsPage(t, goHome) { addr -> page = Page.HOME; open = addr }
                             Page.HOME -> HomeScreen(
                                 t = t,
                                 isDefault = isDefault,

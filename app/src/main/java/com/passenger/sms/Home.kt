@@ -91,7 +91,6 @@ fun HomeScreen(
     val swipeEnd by Cfg.swipeEnd
     val showBal by Cfg.showBalances
     val proActive by Pro.active
-    val pendingPage by Store.pendingPage
 
     var query by remember { mutableStateOf("") }
     var tab by remember { mutableStateOf(Cat.ALL) }
@@ -103,10 +102,7 @@ fun HomeScreen(
     var askDelete by remember { mutableStateOf(false) }
     var askMove by remember { mutableStateOf(false) }
     var askFolder by remember { mutableStateOf(false) }
-    var askNew by remember { mutableStateOf(false) }
-    var newNumber by remember { mutableStateOf("") }
     var newFolder by remember { mutableStateOf("") }
-    var suggestions by remember { mutableStateOf(listOf<Pair<String, String>>()) }
     var balances by remember { mutableStateOf(listOf<BalanceInfo>()) }
 
     val env = TabEnv(archived, blocked, priv, folderOf)
@@ -129,20 +125,6 @@ fun HomeScreen(
     }
     val looksLikeNumber = query.length >= 3 && query.all { it.isDigit() || it == '+' }
 
-    LaunchedEffect(pendingPage) {
-        if (pendingPage == "NEW") {
-            askNew = true
-            Store.pendingPage.value = null
-        }
-    }
-    LaunchedEffect(newNumber, askNew) {
-        if (askNew && newNumber.length >= 2) {
-            delay(200)
-            suggestions = withContext(Dispatchers.IO) { Sms.searchContacts(ctx, newNumber) }
-        } else {
-            suggestions = emptyList()
-        }
-    }
     LaunchedEffect(convs.size, showBal, proActive) {
         balances = if (showBal && Pro.allowed("balances")) {
             withContext(Dispatchers.IO) { Bank.latestBalances(ctx) }
@@ -254,7 +236,7 @@ fun HomeScreen(
             if (sh != null) {
                 Row(
                     Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth()
-                        .glass(t, 14.dp).padding(start = 14.dp, top = 6.dp, bottom = 6.dp, end = 4.dp),
+                        .glass(t, 14.dp).clickable { onPage(Page.NEWMSG) }.padding(start = 14.dp, top = 6.dp, bottom = 6.dp, end = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
@@ -409,43 +391,9 @@ fun HomeScreen(
 
         Box(
             Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(20.dp)
-                .size(56.dp).clip(CircleShape).background(t.accent).clickable { askNew = true },
+                .size(56.dp).clip(CircleShape).background(t.accent).clickable { onPage(Page.NEWMSG) },
             contentAlignment = Alignment.Center
         ) { Ic(R.drawable.ic_edit, t.onAccent, 26.dp) }
-    }
-
-    if (askNew) {
-        AlertDialog(
-            onDismissRequest = { askNew = false },
-            title = { Text(T("پیام جدید", "New message")) },
-            text = {
-                Column {
-                    GlassField(t, newNumber, { newNumber = it }, T("شماره یا نام مخاطب", "Number or contact name"), Modifier.fillMaxWidth())
-                    for ((n, num) in suggestions) {
-                        Row(
-                            Modifier.fillMaxWidth().clickable { askNew = false; newNumber = ""; onOpen(num) }.padding(vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Ic(R.drawable.ic_person, LocalContentColor.current, 18.dp)
-                            Spacer(Modifier.size(10.dp))
-                            Column {
-                                Text(n, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                                Text(num, fontSize = 12.sp)
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val n = newNumber.trim()
-                    askNew = false
-                    newNumber = ""
-                    if (n.isNotEmpty()) onOpen(n)
-                }) { Text(T("ادامه", "Next")) }
-            },
-            dismissButton = { TextButton(onClick = { askNew = false }) { Text(T("انصراف", "Cancel")) } }
-        )
     }
 
     if (askDelete) {

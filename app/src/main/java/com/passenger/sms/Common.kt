@@ -37,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
@@ -122,19 +123,30 @@ fun IconBtn(t: GlassTheme, label: String, onClick: () -> Unit) {
 }
 
 @Composable
-fun Section(t: GlassTheme, title: String, icon: Int? = null, content: @Composable ColumnScope.() -> Unit) {
+fun Section(
+    t: GlassTheme, title: String, icon: Int? = null,
+    collapsible: Boolean = false, startOpen: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    var open by remember(title) { mutableStateOf(startOpen || !collapsible) }
     Column(
         Modifier.fillMaxWidth().glass(t).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.fillMaxWidth().then(if (collapsible) Modifier.clickable { open = !open } else Modifier),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             if (icon != null) {
                 Ic(icon, t.accent, 20.dp)
                 Spacer(Modifier.size(8.dp))
             }
-            Text(title, color = t.text, fontWeight = FontWeight.Bold)
+            Text(title, color = t.text, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            if (collapsible) {
+                Ic(R.drawable.ic_chevron_down, t.subText, 22.dp, Modifier.rotate(if (open) 180f else 0f))
+            }
         }
-        content()
+        if (open) content()
     }
 }
 

@@ -1,3 +1,4 @@
+   import java.util.Base64
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -35,7 +36,7 @@ android {
             create("store") {
                 val f = File(rootDir, ".gradle/psms-store.p12")
                 f.parentFile.mkdirs()
-                f.writeBytes(java.util.Base64.getMimeDecoder().decode(storeKeyB64))
+                f.writeBytes(Base64.getMimeDecoder().decode(storeKeyB64))
                 storeFile = f
                 storePassword = System.getenv("KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("KEY_ALIAS")

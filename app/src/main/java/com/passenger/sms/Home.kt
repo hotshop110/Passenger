@@ -177,7 +177,7 @@ fun HomeScreen(
                             },
                             T("سطل زباله", "Trash") to { onPage(Page.TRASH) },
                             T("نسخه PSMS Pro", "PSMS Pro") to { onPage(Page.PRO) }
-                        )
+                        ).filter { !(BuildConfig.STORE_BUILD && it.first == T("نسخه PSMS Pro", "PSMS Pro")) }
                     )
                 }
             } else {

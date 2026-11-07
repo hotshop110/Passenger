@@ -99,7 +99,7 @@ private fun AboutPoint(t: GlassTheme, icon: Int, title: String, text: String) {
 }
 
 @Composable
-fun AboutCard(t: GlassTheme) {
+fun AboutCard(t: GlassTheme, onPrivacy: () -> Unit) {
     val ctx = LocalContext.current
     val ver = remember {
         try { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "" } catch (e: Exception) { "" }
@@ -171,6 +171,7 @@ fun AboutCard(t: GlassTheme) {
                 toast(ctx, T("ایمیل کپی شد", "Email copied"))
             }, contentAlignment = Alignment.Center) { Ic(R.drawable.ic_copy, t.text, 18.dp) }
         }
+        Chip(t, T("سیاست حریم خصوصی", "Privacy policy"), false, R.drawable.ic_shield) { onPrivacy() }
         Text(T("ساخته‌شده با عشق در ایران", "Made with love in Iran"), color = t.subText, fontSize = 11.sp)
         Text("© PSMS", color = t.subText, fontSize = 10.sp)
     }
@@ -285,6 +286,7 @@ fun SettingsScreen(
             Modifier.fillMaxSize().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            if (!BuildConfig.STORE_BUILD) {
             Row(
                 Modifier.fillMaxWidth().glass(t, 18.dp).clickable { onPage(Page.PRO) }.padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -299,6 +301,7 @@ fun SettingsScreen(
                     )
                 }
                 Ic(R.drawable.ic_chevron_down, t.subText, 20.dp, Modifier.padding(0.dp))
+            }
             }
 
             Section(t, T("زبان", "Language"), R.drawable.ic_chat, true) {
@@ -595,7 +598,7 @@ fun SettingsScreen(
                 ActionBtn(t, T("تنظیم به‌عنوان برنامه پیش‌فرض پیامک", "Set as default SMS app"), R.drawable.ic_chat) { onDefault() }
             }
 
-            AboutCard(t)
+            AboutCard(t) { onPage(Page.PRIVACY) }
             Spacer(Modifier.size(16.dp))
         }
     }

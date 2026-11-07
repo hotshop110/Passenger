@@ -1059,3 +1059,59 @@ fun ContactsPage(t: GlassTheme, onBack: () -> Unit, onOpen: (String) -> Unit) {
         }
     }
 }
+
+
+// ---------- privacy policy ----------
+
+fun privacySections(): List<Pair<String, String>> = listOf(
+    T("خلاصه", "Summary") to T(
+        "PSMS هیچ اطلاعاتی را جمع‌آوری یا به اینترنت ارسال نمی‌کند. برنامه اصلاً مجوز اینترنت ندارد، تبلیغات ندارد و ابزار تحلیل رفتار کاربران در آن نیست. پیام‌ها و تنظیمات شما فقط روی گوشی خودتان می‌مانند.",
+        "PSMS does not collect or send any information over the internet. The app has no internet permission, no ads and no analytics. Your messages and settings stay on your phone."
+    ),
+    T("مجوزهایی که استفاده می‌شود و دلیلش", "Permissions and why they are used") to T(
+        "پیامک (خواندن، دریافت، ارسال): کار اصلی برنامه.\nمخاطبین: نمایش نام و عکس مخاطب و انتخاب گیرنده.\nوضعیت تلفن: تشخیص سیم‌کارت‌ها برای دو سیم‌کارت.\nاعلان‌ها: اعلان پیام‌های جدید، پاسخ سریع و هشدارها.\nراه‌اندازی گوشی: ثبت دوباره‌ی پیام‌های زمان‌بندی‌شده بعد از ری‌استارت.\nلرزش: لرزش اعلان‌ها.",
+        "SMS (read, receive, send): the core of the app.\nContacts: show contact names and photos and pick recipients.\nPhone state: detect SIM cards for dual-SIM support.\nNotifications: new-message alerts, quick reply and warnings.\nBoot completed: re-register scheduled messages after a restart.\nVibration: notification vibration."
+    ),
+    T("اطلاعاتی که روی گوشی ذخیره می‌شود", "What is stored on your phone") to T(
+        "تنظیمات ظاهر، پوشه‌ها، پین‌ها، پیش‌نویس‌ها، یادآوری‌ها و رمز عددی (به‌صورت رمزنگاری‌شده‌ی یک‌طرفه) فقط در حافظه‌ی خود برنامه نگه‌داری می‌شود. پیام‌های حذف‌شده ۳۰ روز در سطل زباله‌ی برنامه می‌مانند و بعد پاک می‌شوند.",
+        "Appearance settings, folders, pins, drafts, reminders and your PIN (stored only as a one-way hash) are kept in the app's private storage. Deleted messages stay in the app's trash for 30 days and are then erased."
+    ),
+    T("پشتیبان‌گیری و خروجی", "Backups and exports") to T(
+        "پشتیبان‌گیری، خروجی PDF و CSV فقط وقتی انجام می‌شود که خودتان درخواست کنید و فایل در جایی ذخیره می‌شود که خودتان انتخاب می‌کنید. برنامه چیزی را به سرور نمی‌فرستد.",
+        "Backups and PDF/CSV exports happen only when you ask for them and are saved where you choose. Nothing is uploaded to any server."
+    ),
+    T("امنیت", "Security") to T(
+        "قفل برنامه با اثر انگشت، قفل گوشی یا رمز عددی، پوشه‌ی خصوصی، پنهان کردن متن پیام در قفل صفحه و ممانعت از اسکرین‌شات از امکانات اختیاری است.",
+        "Optional protections include app lock (fingerprint, phone lock or PIN), a private box, hiding message text on the lock screen and blocking screenshots."
+    ),
+    T("اشتراک با دیگران", "Sharing with others") to T(
+        "برنامه اطلاعات شما را با هیچ شخص ثالثی به اشتراک نمی‌گذارد. فقط وقتی خودتان گزینه‌ی «اشتراک‌گذاری» را بزنید، متن یا تصویر انتخابی به برنامه‌ی مورد نظر شما داده می‌شود. تایپ صوتی و خواندن با صدا توسط سرویس‌های سیستمی گوشی انجام می‌شود و تابع سیاست همان سرویس‌هاست.",
+        "The app shares nothing with third parties. Only when you tap Share, the chosen text or image is handed to the app you pick. Voice typing and read-aloud are handled by your phone's system services and follow their own policies."
+    ),
+    T("حذف اطلاعات", "Deleting your data") to T(
+        "با حذف برنامه، همه‌ی اطلاعات داخلی آن پاک می‌شود. پیامک‌ها در خود سیستم اندروید می‌مانند و به برنامه‌ی پیامک دیگری منتقل می‌شوند.",
+        "Uninstalling the app removes all of its internal data. Your SMS messages remain in Android itself and are available to any other SMS app."
+    ),
+    T("ارتباط", "Contact") to T(
+        "برای هر سؤال درباره‌ی حریم خصوصی: ", "For any privacy question: "
+    ) + CONTACT_EMAIL
+)
+
+@Composable
+fun PrivacyPage(t: GlassTheme, onBack: () -> Unit) {
+    Column(Modifier.fillMaxSize()) {
+        AppBar(t, T("سیاست حریم خصوصی", "Privacy policy"), onBack = onBack)
+        Column(
+            Modifier.verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            for ((title, body) in privacySections()) {
+                Column(Modifier.fillMaxWidth().glass(t, 14.dp).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(title, color = t.text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text(body, color = t.subText, fontSize = 13.sp)
+                }
+            }
+            Text(T("آخرین به‌روزرسانی: آبان ۱۴۰۵", "Last updated: November 2026"), color = t.subText, fontSize = 11.sp)
+        }
+    }
+}

@@ -184,7 +184,7 @@ fun requestDefaultSms(ctx: Context, launcher: ManagedActivityResultLauncher<Inte
     }
 }
 
-enum class Page { HOME, SETTINGS, RULES, TEMPLATES, SEARCH, STARRED, SCHEDULED, TRASH, BANK, BULK, PRIVATE, STATS, CLEANUP, PRO, NEWMSG }
+enum class Page { HOME, SETTINGS, RULES, TEMPLATES, SEARCH, STARRED, SCHEDULED, TRASH, BANK, BULK, PRIVATE, STATS, CLEANUP, PRO, NEWMSG, PRIVACY }
 
 @Composable
 fun App() {
@@ -256,7 +256,7 @@ fun App() {
     BackHandler(enabled = page != Page.HOME || open != null) {
         if (open != null) {
             open = null
-        } else if (page == Page.RULES || page == Page.TEMPLATES) {
+        } else if (page == Page.RULES || page == Page.TEMPLATES || page == Page.PRIVACY) {
             page = Page.SETTINGS
         } else {
             page = Page.HOME
@@ -306,6 +306,7 @@ fun App() {
                             Page.STATS -> StatsPage(t, goHome)
                             Page.CLEANUP -> CleanupPage(t, goHome)
                             Page.PRO -> ProPage(t, goHome)
+                            Page.PRIVACY -> PrivacyPage(t) { page = Page.SETTINGS }
                             Page.NEWMSG -> ContactsPage(t, goHome) { addr -> page = Page.HOME; open = addr }
                             Page.HOME -> HomeScreen(
                                 t = t,

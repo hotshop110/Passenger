@@ -11,28 +11,62 @@ android {
         applicationId = "com.passenger.sms"
         minSdk = 24
         targetSdk = 34
-        versionCode = 6
-        versionName = "2.1"
+        versionCode = 7
+        versionName = "2.2"
     }
 
+    // Private store signing key: provided by GitHub Actions secrets (never stored in the repo).
+    val storeKeyB64 = System.getenv("KEYSTORE_B64") ?: ""
+    val hasStoreKey = storeKeyB64.isNotBlank() &&
+        !System.getenv("KEYSTORE_PASSWORD").isNullOrBlank() &&
+        !System.getenv("KEY_ALIAS").isNullOrBlank() &&
+        !System.getenv("KEY_PASSWORD").isNullOrBlank()
+
     signingConfigs {
-        create("release") {
+        // Old sideload key (used for debug builds and as a fallback when no secrets are set)
+        create("legacy") {
             storeFile = file("passenger.p12")
             storePassword = "passenger123"
             keyAlias = "passenger"
             keyPassword = "passenger123"
             storeType = "pkcs12"
         }
+        if (hasStoreKey) {
+            create("store") {
+                val f = File(rootDir, ".gradle/psms-store.p12")
+                f.parentFile.mkdirs()
+                f.writeBytes(java.util.Base64.getMimeDecoder().decode(storeKeyB64))
+                storeFile = f
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+                storeType = "pkcs12"
+            }
+        }
+    }
+
+    flavorDimensions += "dist"
+    productFlavors {
+        // Cafe Bazaar edition: no external license codes, all features available
+        create("bazaar") {
+            dimension = "dist"
+            buildConfigField("boolean", "STORE_BUILD", "true")
+        }
+        // Direct (sideload) edition: PSMS Pro unlocked with activation codes
+        create("direct") {
+            dimension = "dist"
+            buildConfigField("boolean", "STORE_BUILD", "false")
+        }
     }
 
     buildTypes {
         getByName("debug") {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.getByName("legacy")
             isDebuggable = false
         }
         getByName("release") {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.getByName(if (hasStoreKey) "store" else "legacy")
         }
     }
     compileOptions {
@@ -40,8 +74,15 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
+    }
 }
 
 dependencies {

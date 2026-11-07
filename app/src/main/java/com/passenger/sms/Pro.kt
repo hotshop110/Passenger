@@ -62,7 +62,7 @@ object Pro {
         active.value = false
     }
 
-    fun allowed(feature: String): Boolean = active.value || feature !in LOCKED
+    fun allowed(feature: String): Boolean = BuildConfig.STORE_BUILD || active.value || feature !in LOCKED
 
     /** Returns true when allowed; otherwise opens the PSMS Pro page. */
     fun gate(ctx: Context, feature: String): Boolean {
